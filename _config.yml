@@ -22,13 +22,13 @@ repository               : "Dreamexplo/Dreamexplo.github.io"
 author:
   # Biographic information
   avatar           : "personprofile.png"
-  name             : "Your Sidebar Name"
+  name             : "个人信息"
   pronouns         : # example: "she/her"  
-  bio              : "Short biography for the left-hand sidebar"
+  bio              : "你可以在下面的链接找到我！"
   location         : "塞博地球"
   employer         : "USCA"
   uri              : # URL
-  email            : "none@example.org" 
+  email            : "leolee1314521@outlook.com" 
 
   # Academic websites
   arxiv            : # URL - Update wit# googlescholar    : "https://scholar.google.com/citations?user=PS_CX0AAAAAJ"
@@ -200,13 +200,13 @@ kramdown:
 
 # Collections
 collections:
-  teaching:
+  业务范围:
     output: true
     permalink: /:collection/:path/
-  publications:
+  写作计划:
     output: true
     permalink: /:collection/:path/
-  portfolio:
+  资源导航站:
     output: true
     permalink: /:collection/:path/
   talks:
@@ -237,7 +237,7 @@ defaults:
   # _teaching
   - scope:
       path: ""
-      type: teaching
+      type: 业务范围
     values:
       layout: single
       author_profile: true
@@ -246,7 +246,7 @@ defaults:
   # _publications
   - scope:
       path: ""
-      type: publications
+      type: 写作计划
     values:
       layout: single
       author_profile: true
@@ -255,7 +255,7 @@ defaults:
   # _portfolio
   - scope:
       path: ""
-      type: portfolio
+      type: 资源导航站
     values:
       layout: single
       author_profile: true
