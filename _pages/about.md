@@ -9,11 +9,9 @@ redirect_from:
 
 这是一个游戏作为思想的媒介和还原的基础来大一统逻辑、数学、AI的网站。人类历史的开端就附随着游戏精神的发生。游戏与技术和文化，乃至是哲学有着一种紧密的渊源。从火的使用到农业革命，从纸的发展到对纯粹数学的不懈探索，游戏精神都包含了人类对自身自然性超越的努力以及对于自由的渴望。进入21世纪，技术，尤其是那种能改写和影响知识、时间的技术发展起来了。我不得不思索一种更为公正的技术、教育和文化的起点，人是如何与机器打交道的，人又是如何在碎片化、数字化的世界增强人自己的力量。苏格拉底说“认识你自己”的实质就是调教你自己，这是一种伦理实践。开源精神带有某种数字共产主义的色彩，但是其局限的一面也有待挖掘，但是其中有点是积极且明确的，那就是计算能力和AI素养的数字化生存的素质、技能是和以前的自然语言书写、阅读一样的一种基本人权，这需要我们以各种方式来进行捍卫。
 
-A data-driven personal website
+学习交流的个人网站
 ======
-Like many other Jekyll-based GitHub Pages templates, Academic Pages makes you separate the website's content from its form. The content & metadata of your website are in structured markdown files, while various other files constitute the theme, specifying how to transform that content & metadata into HTML pages. You keep these various markdown (.md), YAML (.yml), HTML, and CSS files in a public GitHub repository. Each time you commit and push an update to the repository, the [GitHub pages](https://pages.github.com/) service creates static HTML pages based on these files, which are hosted on GitHub's servers free of charge.
-
-Many of the features of dynamic content management systems (like Wordpress) can be achieved in this fashion, using a fraction of the computational resources and with far less vulnerability to hacking and DDoSing. You can also modify the theme to your heart's content without touching the content of your site. If you get to a point where you've broken something in Jekyll/HTML/CSS beyond repair, your markdown files describing your talks, publications, etc. are safe. You can rollback the changes or even delete the repository and start over -- just be sure to save the markdown files! Finally, you can also write scripts that process the structured data on the site, such as [this one](https://github.com/academicpages/academicpages.github.io/blob/master/talkmap.ipynb) that analyzes metadata in pages about talks to display [a map of every location you've given a talk](https://academicpages.github.io/talkmap.html).
+这是我用来个人展示、个人学习以及拓展交流可能性的个人网站。在这里我链接了我邮箱、社交媒体以及一些其他可以和我进行联系的平台。“独学则无友、孤陋而寡闻”，我希望有很多有意思的人能跟我进行分享、深入的交流，这样我可以学习到很多。让我们一起探索以游戏为中心和线索的逻辑、数学、CS、AI的种种可能性吧！在这其中我们也会激发对于科学、经济、技术、社会的哲学和社会学以及文化研究的讨论。
 
 Getting started
 ======
