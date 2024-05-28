@@ -7,7 +7,7 @@ redirect_from:
   - /about.html
 ---
 
-This is the front page of a website that is powered by the [Academic Pages template](https://github.com/academicpages/academicpages.github.io) and hosted on GitHub pages. [GitHub pages](https://pages.github.com) is a free service in which websites are built and hosted from code and data stored in a GitHub repository, automatically updating when a new commit is made to the respository. This template was forked from the [Minimal Mistakes Jekyll Theme](https://mmistakes.github.io/minimal-mistakes/) created by Michael Rose, and then extended to support the kinds of content that academics have: publications, talks, teaching, a portfolio, blog posts, and a dynamically-generated CV. You can fork [this repository](https://github.com/academicpages/academicpages.github.io) right now, modify the configuration and markdown files, add your own PDFs and other content, and have your own site for free, with no ads! An older version of this template powers my own personal website at [stuartgeiger.com](http://stuartgeiger.com), which uses [this Github repository](https://github.com/staeiou/staeiou.github.io).
+    这是一个游戏作为思想的媒介和还原的基础来大一统逻辑、数学、AI的网站。人类历史的开端就附随着游戏精神的发生。游戏与技术和文化，乃至是哲学有着一种紧密的渊源。从火的使用到农业革命，从纸的发展到对纯粹数学的不懈探索，游戏精神都包含了人类对自身自然性超越的努力以及对于自由的渴望。进入21世纪，技术，尤其是那种能改写和影响知识、时间的技术发展起来了。我不得不思索一种更为公正的技术、教育和文化的起点，人是如何与机器打交道的，人又是如何在碎片化、数字化的世界增强人自己的力量。苏格拉底说“认识你自己”的实质就是调教你自己，这是一种伦理实践。开源精神带有某种数字共产主义的色彩，但是其局限的一面也有待挖掘，但是其中有点是积极且明确的，那就是计算能力和AI素养的数字化生存的素质、技能是和以前的自然语言书写、阅读一样的一种基本人权，这需要我们以各种方式来进行捍卫。
 
 A data-driven personal website
 ======
