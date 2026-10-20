@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Labs · 实验作品</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: radial-gradient(120% 100% at 50% 0%, #182444 0%, #0b0f1a 60%);
+         color: #e8eefc; font: 16px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+         display: flex; align-items: center; justify-content: center; padding: 48px 20px; }
+  .wrap { width: min(920px, 100%); }
+  h1 { font-size: 40px; margin: 0 0 8px; letter-spacing: .5px; }
+  .sub { color: #8fa2c2; margin: 0 0 36px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+  a.card { display: block; text-decoration: none; color: inherit; background: #131c2f; border: 1px solid #22304d;
+           border-radius: 14px; padding: 22px; transition: transform .15s ease, border-color .15s ease; }
+  a.card:hover { transform: translateY(-3px); border-color: #3f6fe0; }
+  .card h2 { font-size: 20px; margin: 0 0 6px; color: #8fc0ff; }
+  .card p { margin: 0; color: #a7b6d0; font-size: 14px; }
+  .tag { display: inline-block; margin-top: 14px; font-size: 12px; color: #7d90ad; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Labs</h1>
+    <p class="sub">浏览器里跑的小工具与实验页面。</p>
+    <div class="grid">
+      <a class="card" href="./html-to-video/index.html">
+        <h2>HTML → Video Studio</h2>
+        <p>上传 HTML 或 ZIP，在面板设置分辨率、帧率、时长与背景音乐，本地录制并导出 MP4 / WebM，文件不上传服务器。</p>
+        <span class="tag">Canvas captureStream · html2canvas · ffmpeg.wasm</span>
+      </a>
+      <a class="card" href="./opus55/index.html">
+        <h2>Opus 5.5 说明页</h2>
+        <p>交互式讲解页面。</p>
+        <span class="tag">静态页面</span>
+      </a>
+    </div>
+  </div>
+</body>
+</html>

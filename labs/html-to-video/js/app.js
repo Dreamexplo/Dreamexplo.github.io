@@ -1,4 +1,4 @@
-/* HTML-to-Video Studio - 主逻辑
+﻿/* HTML-to-Video Studio - 主逻辑
  * 链路：上传文件 → 构建同源虚拟目录(SW) → iframe 加载用户页面 →
  *       自动播放/注入 → Canvas captureStream 或 html2canvas 逐帧 →
  *       MediaRecorder 录制 → 原生 mp4 或 ffmpeg.wasm 转码 → 下载
@@ -78,17 +78,38 @@ async function setupVFS() {
 }
 
 /* ---------- 录制 ---------- */
-const frame = { iframe: null, win: null, doc: null, outCanvas: null, outCtx: null, W: 0, H: 0 };
+const frame = { iframe: null, wrap: null, win: null, doc: null, outCanvas: null, outCtx: null, W: 0, H: 0 };
 
+/* iframe 必须位于可见区域并真实渲染，否则 canvas 不出帧、rAF 被节流；
+   这里放进右侧预览面板，按容器尺寸等比缩放显示。 */
 function buildIframe() {
+  if (frame.wrap) { frame.wrap.remove(); frame.wrap = null; }
   if (frame.iframe) { frame.iframe.remove(); }
   const [W, H] = currentSize();
   const ifr = document.createElement('iframe');
-  ifr.style.cssText = `position:fixed;left:-10000px;top:0;width:${W}px;height:${H}px;border:0;background:#000;`;
+  ifr.style.cssText = 'position:absolute;left:0;top:0;border:0;background:#000;';
+  ifr.width = String(W); ifr.height = String(H);
   ifr.setAttribute('allow', 'autoplay; fullscreen');
-  document.body.appendChild(ifr);
-  frame.iframe = ifr;
+  const wrap = document.createElement('div');
+  wrap.id = 'stageWrap';
+  wrap.style.cssText = `position:absolute;left:50%;top:50%;width:${W}px;height:${H}px;transform-origin:center center;`;
+  wrap.appendChild(ifr);
+  const host = document.querySelector('.preview-body') || document.body;
+  host.appendChild(wrap);
+  frame.iframe = ifr; frame.wrap = wrap; frame.W = W; frame.H = H;
+  fitStage();
+  $('previewEmpty').hidden = true;
 }
+
+function fitStage() {
+  const wrap = frame.wrap;
+  if (!wrap) return;
+  const host = wrap.parentElement;
+  if (!host) return;
+  const k = Math.min(host.clientWidth / frame.W, host.clientHeight / frame.H) * 0.96 || 0.3;
+  wrap.style.transform = `translate(-50%,-50%) scale(${k})`;
+}
+window.addEventListener('resize', fitStage);
 
 function currentSize() {
   return $('optSize').value.split('x').map(Number);
@@ -145,30 +166,26 @@ function pickCanvas() {
   return canvases[0] || null;
 }
 
-function makeRecorder(stream, preferredMime) {
-  // 优先 H.264 + MP4（兼容性最好），不支持时退回 WebM
-  const candidates = [
-    preferredMime,
-    'video/mp4;codecs=avc1.42E01E',
-    'video/mp4;codecs=avc1',
-    'video/mp4',
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
-    'video/webm',
-  ].filter(Boolean);
-  let mime = null;
-  for (const c of candidates) {
-    if (MediaRecorder.isTypeSupported(c)) { mime = c; break; }
-  }
-  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 6_000_000 } : undefined);
+function mimeSupported(list) {
+  for (const c of list) { try { if (MediaRecorder.isTypeSupported(c)) return c; } catch (_) {} }
+  return '';
+}
+
+function makeRecorder(stream) {
+  // 统一用 WebM 录制：各浏览器实现稳定、时长准确；
+  // 需要 MP4 时由 ffmpeg.wasm 在本机转码（不上传云端）。避免 mp4 直录在部分环境静默 0 帧的问题。
+  const mime = mimeSupported(['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']);
   const chunks = [];
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 6_000_000 } : undefined);
   rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
   rec.onstart = () => { state.rawMime = rec.mimeType || mime || ''; };
   rec.onstop = () => {
     state.rawMime = rec.mimeType || mime || '';
     state.rawBlob = new Blob(chunks, { type: state.rawMime || 'video/webm' });
+    setTimeout(finishPipeline, 250);
   };
   rec.start(500);
+  state.recorder = rec;
   return rec;
 }
 
@@ -191,8 +208,6 @@ async function startDomFrame(fps, mode, opts = {}) {
   const win = frame.win;
   const vw = frame.W, vh = frame.H;
   const doc = frame.doc;
-  let scrollY = win.scrollY || 0;
-  const totalScroll = Math.max(0, doc.documentElement.scrollHeight - vh);
   const fpsInt = Math.max(1, Math.round(fps));
   const stopScroll = mode === 'scroll';
   const timed = stopScroll && opts.durMode === 'fixed' && opts.fixedSec > 0;
@@ -200,8 +215,35 @@ async function startDomFrame(fps, mode, opts = {}) {
   const t0 = performance.now();
   let step = 0;
 
+  /* 滚动模式：整页先快照成一张大图，再按时间轴切视口 —— 位置精确、帧率稳定 */
+  if (stopScroll) {
+    const shot = await snapshotFullPage(win, doc, vw);
+    const logicalH = shot.logicalH;
+    const k = shot.canvas.height / logicalH;   // 快照缩放比
+    const maxScroll = Math.max(0, logicalH - vh);
+    const pxPerSec = opts.scrollSpeed || 150;
+    const scrollDur = timed ? fixedSec : Math.max(2, maxScroll / pxPerSec);
+    const visH = Math.min(shot.canvas.height, Math.round(vh * k));
+    const loop = () => {
+      if (!state.recording) return;
+      const p = Math.min(1, (performance.now() - t0) / 1000 / scrollDur);
+      const srcY = Math.min(shot.canvas.height - visH, Math.round(maxScroll * p * k));
+      frame.outCtx.fillStyle = '#000';
+      frame.outCtx.fillRect(0, 0, vw, vh);
+      frame.outCtx.drawImage(shot.canvas, 0, srcY, shot.canvas.width, visH, 0, 0, vw, vh);
+      step++;
+      if (opts.onFrame) opts.onFrame(step);
+      if (p >= 1) { stopRecording(); return; }
+      setTimeout(loop, 1000 / fpsInt);
+    };
+    loop();
+    return () => {};
+  }
+
+  /* 动画 / DOM 逐帧：每帧重新截取当前视口 */
   const loop = async () => {
     if (!state.recording) return;
+    const started = performance.now();
     try {
       const target = doc.documentElement || doc.body;
       const canvas = await html2canvas(target, {
@@ -211,8 +253,8 @@ async function startDomFrame(fps, mode, opts = {}) {
         backgroundColor: '#000',
         windowWidth: vw,
         windowHeight: vh,
-        x: stopScroll ? (win.scrollX || 0) : 0,
-        y: stopScroll ? scrollY : 0,
+        x: 0,
+        y: 0,
         logging: false,
       });
       frame.outCtx.fillStyle = '#000';
@@ -220,27 +262,40 @@ async function startDomFrame(fps, mode, opts = {}) {
       frame.outCtx.drawImage(canvas, 0, 0, vw, vh);
       if (opts.onFrame) opts.onFrame(step);
       step++;
-      if (stopScroll) {
-        if (timed) {
-          // 固定时长：按时间轴匀速滚动，保证成片时长等于设定值
-          const elapsed = (performance.now() - t0) / 1000;
-          scrollY = Math.min(totalScroll, totalScroll * Math.min(1, elapsed / fixedSec));
-        } else {
-          if (scrollY >= totalScroll - 1) { stopRecording(); return; }
-          scrollY = Math.min(totalScroll, scrollY + Math.max(1, Math.round(vh * 0.85)));
-        }
-        win.scrollTo(0, scrollY);
-      }
     } catch (err) {
       stopRecording();
       setStatus('逐帧渲染错误: ' + err.message, 'err');
       console.error('[frame render]', err);
       return;
     }
-    setTimeout(loop, Math.max(40, 1000 / fpsInt));
+    const cost = performance.now() - started;
+    setTimeout(loop, Math.max(10, 1000 / fpsInt - cost));
   };
   loop();
   return () => {};
+}
+
+/* 整页快照：一次性渲染整篇文档，供滚动模式切片；超大页面自动降采样 */
+async function snapshotFullPage(win, doc, vw) {
+  const target = doc.documentElement || doc.body;
+  const logicalH = Math.max(target.scrollHeight, target.offsetHeight, doc.body ? doc.body.scrollHeight : 0, 720);
+  let scale = Math.min(1, 1280 / vw);
+  const MAX_PX = 28e6;
+  while (logicalH * vw * scale * scale > MAX_PX && scale > 0.15) scale *= 0.85;
+  const canvas = await html2canvas(target, {
+    scale,
+    useCORS: true,
+    allowTaint: false,
+    backgroundColor: '#000000',
+    windowWidth: vw,
+    windowHeight: logicalH,
+    width: vw,
+    height: logicalH,
+    x: 0,
+    y: 0,
+    logging: false,
+  });
+  return { canvas, logicalH };
 }
 
 /* ---------- 停止 ---------- */
@@ -259,17 +314,45 @@ function stopRecording() {
 /* ---------- ffmpeg.wasm 后处理 ---------- */
 async function getFFmpeg() {
   if (state.ffmpeg) return state.ffmpeg;
-  setStatus('加载 ffmpeg.wasm（首次较慢）…');
-  const { createFFmpeg } = FFmpeg;
-  // 本地 vendor 化，避免 CDN 被 ORB/跨域策略拦截
-  const corePath = new URL('vendor/ffmpeg/core.js', document.baseURI).href;
-  const ffmpeg = createFFmpeg({
-    corePath,
-    log: false,
+  setStatus('加载 ffmpeg.wasm（约 32MB，首次较慢）…');
+  if (!window.FFmpegWASM || !window.FFmpegWASM.FFmpeg) throw new Error('ffmpeg 库未加载（vendor/ffmpeg/ffmpeg.js）');
+  if (!window.FFmpegUtil || !window.FFmpegUtil.toBlobURL) throw new Error('ffmpeg util 未加载（vendor/ffmpeg/util.js）');
+  const { FFmpeg } = FFmpegWASM;
+  const { toBlobURL } = FFmpegUtil;
+  // 全部本地 vendor 化：核心/worker 同源加载，不依赖 CDN，也不要求 SharedArrayBuffer
+  const base = new URL('vendor/ffmpeg/', document.baseURI).href;
+  const ffmpeg = new FFmpeg();
+  ffmpeg.on('log', ({ message }) => { console.debug('[ffmpeg]', message); });
+  ffmpeg.on('progress', ({ progress, time }) => {
+    if (progress > 0 && progress <= 1) {
+      setProgress(0.4 + Math.min(0.5, progress * 0.5), `转码中 ${(progress * 100).toFixed(0)}%`);
+    }
   });
-  await ffmpeg.load();
+  const coreURL = await toBlobURL(base + 'core.js', 'text/javascript');
+  const wasmURL = await toBlobURL(base + 'ffmpeg-core.wasm', 'application/wasm');
+  await ffmpeg.load({ coreURL, wasmURL });
   state.ffmpeg = ffmpeg;
   return ffmpeg;
+}
+
+/* 输入的录制文件是否含音频轨（无音轨时禁止对音频做滤镜） */
+async function hasAudioTrack(ffmpeg, name) {
+  let buf = '';
+  const h = ({ message }) => { buf += message + '\n'; };
+  ffmpeg.on('log', h);
+  try { await ffmpeg.exec(['-hide_banner', '-i', name]); } catch (_) {}
+  try { ffmpeg.off('log', h); } catch (_) {}
+  return /Stream #\d+:\d+.*Audio:/.test(buf);
+}
+
+/* atempo 单次只接受 0.5~2，超出范围需要串联 */
+function atempoChain(speed) {
+  const parts = [];
+  let s = speed;
+  while (s > 2) { parts.push('atempo=2.0'); s /= 2; }
+  while (s < 0.5) { parts.push('atempo=0.5'); s /= 0.5; }
+  parts.push('atempo=' + s.toFixed(4));
+  return parts.join(',');
 }
 
 async function postProcess() {
@@ -300,44 +383,53 @@ async function postProcess() {
 
   const ffmpeg = await getFFmpeg();
   const inExt = rawIsMp4 ? 'mp4' : 'webm';
-  ffmpeg.FS.writeFile('input.' + inExt, new Uint8Array(await state.rawBlob.arrayBuffer()));
+  await ffmpeg.writeFile('input.' + inExt, new Uint8Array(await state.rawBlob.arrayBuffer()));
+  const hasAudio = await hasAudioTrack(ffmpeg, 'input.' + inExt);
   const args = ['-y', '-i', 'input.' + inExt];
   if (music) {
-    ffmpeg.FS.writeFile('bgm' + extOf(music.name), new Uint8Array(await music.arrayBuffer()));
-    args.push('-i', 'bgm' + extOf(music.name));
+    const bgmName = 'bgm' + extOf(music.name);
+    await ffmpeg.writeFile(bgmName, new Uint8Array(await music.arrayBuffer()));
+    args.push('-i', bgmName);
   }
   const vf = speed !== 1 ? `setpts=${(1 / speed).toFixed(4)}*PTS` : null;
-  const af = speed !== 1 ? `atempo=${Math.min(4, speed).toFixed(4)}` : null;
+  const af = speed !== 1 && hasAudio ? atempoChain(speed) : null;
 
   const filterParts = [];
-  const mapArgs = ['-map', '0:v:0'];
+  const mapArgs = [];
+  if (vf) {
+    filterParts.push(`[0:v:0]${vf}[v0]`);
+    mapArgs.push('-map', '[v0]');
+  } else {
+    mapArgs.push('-map', '0:v:0');
+  }
   if (music) {
     const vol = (parseFloat($('optMusicVol').value) / 100).toFixed(2);
-    const dur = await probeDuration() || 30;
-    const musicChain = `[1:a]volume=${vol},aloop=loop=-1:size=2e9,atrim=0:${dur.toFixed(3)},asetpts=PTS-STARTPTS`;
-    filterParts.push(`[1:a]${musicChain}[a0]`);
-    mapArgs.push('-map', '[a0]');
+    // 背景音乐循环铺满 → 变调同步 → 按“变速后时长”截断（WebM 需 seek hack 才能取到时长）
+    const rawDur = await probeDuration();
+    const dur = Number.isFinite(rawDur) && rawDur > 0 ? rawDur : 0;
+    const chain = [`volume=${vol}`];
+    if (dur) chain.push('aloop=loop=-1:size=2e9', `atrim=0:${dur.toFixed(3)}`);
+    chain.push('asetpts=PTS-STARTPTS');
+    if (speed !== 1) chain.push(atempoChain(speed));
+    if (dur) chain.push(`atrim=0:${(dur / speed).toFixed(3)}`);
+    filterParts.push(`[1:a]${chain.join(',')}[a0]`);
+    mapArgs.push('-map', '[a0]', '-shortest');
   } else if (af) {
     filterParts.push(`[0:a]${af}[a0]`);
     mapArgs.push('-map', '[a0]');
+  } else if (hasAudio) {
+    mapArgs.push('-map', '0:a?');
   }
-  if (vf) {
-    const vidLabel = '[v0]';
-    const src = filterParts.length ? '[0:v:0]' : '0:v:0';
-    filterParts.push(`[${src}]${vf}${vidLabel}`);
-    args.push('-filter_complex', filterParts.join(';'), '-map', '[v0]');
-  } else if (filterParts.length) {
-    args.push('-filter_complex', filterParts.join(';'));
-  }
-  args.push(...mapArgs, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p');
-  if (music || af) args.push('-c:a', 'aac', '-b:a', '128k');
+  if (filterParts.length) args.push('-filter_complex', filterParts.join(';'));
+  args.push(...mapArgs, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-vsync', 'vfr');
+  if (music || af || hasAudio) args.push('-c:a', 'aac', '-b:a', '128k');
   args.push('output.mp4');
 
   try {
-    setProgress(0.5, '转码中（ffmpeg.wasm 单线程较慢，请耐心等待）…');
-    await ffmpeg.run(...args);
-    setProgress(0.9, '封装输出…');
-    const data = ffmpeg.FS.readFile('output.mp4');
+    setProgress(0.4, '转码中（ffmpeg.wasm 单线程较慢，请耐心等待）…');
+    await ffmpeg.exec(args);
+    setProgress(0.95, '封装输出…');
+    const data = await ffmpeg.readFile('output.mp4');
     state.resultBlob = new Blob([data.buffer], { type: 'video/mp4' });
     finish('mp4');
   } catch (e) {
@@ -356,14 +448,31 @@ function extOf(name) { const m = /\.\w+$/.exec(name); return m ? m[0].toLowerCas
 
 function isMp4Blob(blob) { return (blob.type || '').startsWith('video/mp4'); }
 
+/* 读取录制文件真实时长；WebM 常返回 Infinity，需 seek 到极值触发浏览器计算时长 */
 async function probeDuration() {
-  return new Promise((resolve) => {
-    const v = document.createElement('video');
-    v.preload = 'metadata';
-    v.onloadedmetadata = () => resolve(v.duration || 30);
-    v.onerror = () => resolve(30);
-    v.src = URL.createObjectURL(state.rawBlob);
+  if (!state.rawBlob) return 0;
+  const url = URL.createObjectURL(state.rawBlob);
+  const v = document.createElement('video');
+  v.preload = 'metadata';
+  v.muted = true;
+  v.src = url;
+  await new Promise((r) => {
+    v.onloadedmetadata = r;
+    v.onerror = r;
+    setTimeout(r, 4000);
   });
+  let d = v.duration;
+  if (!Number.isFinite(d) || d <= 0) {
+    await new Promise((r) => {
+      v.onseeked = r;
+      v.onerror = r;
+      setTimeout(r, 4000);
+      try { v.currentTime = 1e101; } catch (_) { r(); }
+    });
+    d = v.duration;
+  }
+  URL.revokeObjectURL(url);
+  return (Number.isFinite(d) && d > 0) ? d : 0;
 }
 
 function finish(ext) {
@@ -390,6 +499,7 @@ function attachPreview(stream) {
   const v = $('preview');
   v.srcObject = stream;
   v.muted = true;
+  v.hidden = false;
   $('previewEmpty').style.display = 'none';
 }
 
@@ -423,6 +533,7 @@ async function start() {
     const durMode = $('optDuration').value;
     const fixedSec = parseFloat($('optDurationSec').value) || 10;
     const stopJs = $('optStopJs').value.trim();
+    const scrollSpeed = parseFloat($('optScrollSpeed').value) || 150;
 
     setStatus('开始录制…');
 
@@ -439,10 +550,10 @@ async function start() {
       if (pickCanvas()) {
         await startLiveCanvas(fps);
       } else {
-        await startDomFrame(fps, 'live', { durMode, fixedSec });
+        await startDomFrame(fps, 'live', { durMode, fixedSec, scrollSpeed });
       }
     } else {
-      await startDomFrame(fps, 'scroll', { durMode, fixedSec });
+      await startDomFrame(fps, 'scroll', { durMode, fixedSec, scrollSpeed });
     }
 
     // 停止条件
@@ -471,14 +582,26 @@ async function start() {
 async function onStop() {
   stopRecording();
   $('btnStop').disabled = true;
-  // 等 recorder onstop 落盘
-  await sleep(200);
+  // 兜底：若 recorder 已 inactive 未触发 onstop，这里直接接管后处理
+  await sleep(300);
+  if (state.rawBlob) finishPipeline();
+}
+
+/* 录制结束后的统一收尾（幂等，避免定时停止/手动停止重复触发） */
+let pipelineRunning = false;
+async function finishPipeline() {
+  if (pipelineRunning) return;
+  if (!state.rawBlob) return;
+  pipelineRunning = true;
   try {
     await postProcess();
   } catch (e) {
-    setStatus('处理失败: ' + e.message, 'err');
+    setStatus('处理失败: ' + (e.message || e), 'err');
+  } finally {
+    pipelineRunning = false;
+    $('btnStart').disabled = false;
+    $('btnStop').disabled = true;
   }
-  $('btnStart').disabled = false;
 }
 
 /* ---------- 事件绑定 ---------- */

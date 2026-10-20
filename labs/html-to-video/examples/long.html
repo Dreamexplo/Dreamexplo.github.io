@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>示例长页 - 滚动模式</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.7 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; color: #e8eefc; background: #0e1424; }
+  .hero { height: 720px; display: flex; flex-direction: column; justify-content: center; align-items: center;
+          background: radial-gradient(120% 120% at 50% 0%, #1d3b7a 0%, #0e1424 60%); }
+  .hero h1 { font-size: 54px; margin: 0 0 12px; letter-spacing: 1px; }
+  .hero p { color: #94a7c8; font-size: 20px; margin: 0; }
+  .sec { min-height: 620px; padding: 70px 10vw; border-top: 1px solid #1b2740; }
+  .sec h2 { font-size: 34px; margin: 0 0 18px; color: #7fb2ff; }
+  .sec p { color: #b9c7de; max-width: 760px; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 26px; }
+  .card { background: #141d33; border: 1px solid #223050; border-radius: 12px; padding: 20px; }
+  .card b { color: #8fd0ff; display: block; margin-bottom: 6px; }
+  .bar { height: 10px; border-radius: 6px; background: linear-gradient(90deg, #4f8cff, #a06bff); margin: 14px 0 4px; }
+  .end { height: 420px; display: flex; align-items: center; justify-content: center; color: #6d809f; }
+</style>
+</head>
+<body>
+  <section class="hero">
+    <h1>整页滚动示例</h1>
+    <p>用于测试「滚动」模式的整页录屏</p>
+  </section>
+
+  <section class="sec">
+    <h2>01 · 这套页面的用途</h2>
+    <p>把做好的静态页面（长报告、产品页、课程讲义）拖进 Studio，选择「滚动」模式，即可得到一段完整走完整页的视频，无需手工录屏。</p>
+    <div class="cards">
+      <div class="card"><b>报告</b>长文档一键成片</div>
+      <div class="card"><b>产品页</b>落地页演示</div>
+      <div class="card"><b>讲义</b>课程内容固化</div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <h2>02 · 滚动节奏</h2>
+    <p>默认按内容总高度自动计算滚动速度，也可以改为固定时长，让整段视频严格落在你需要的时间里。</p>
+    <div class="bar" style="width:80%"></div>
+    <div class="bar" style="width:55%"></div>
+    <div class="bar" style="width:68%"></div>
+  </section>
+
+  <section class="sec">
+    <h2>03 · 输出说明</h2>
+    <p>滚动模式下按帧抓取画面，输出 MP4（H.264）或 WebM。整个过程在浏览器本地完成，页面内容不会上传到任何服务器。</p>
+  </section>
+
+  <div class="end">—— 页面结束 ——</div>
+</body>
+</html>

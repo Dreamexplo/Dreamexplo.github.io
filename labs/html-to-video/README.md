@@ -1,4 +1,4 @@
-# HTML to Video Studio
+﻿# HTML to Video Studio
 
 纯前端 HTML → 视频 Web 应用。部署于 GitHub Pages，用户上传 HTML/ZIP、在面板配置参数、生成并下载视频交付物。所有渲染与转码都在访客浏览器本地完成，文件不上传服务器。
 
@@ -13,7 +13,7 @@ https://dreamexplo.github.io/labs/html-to-video/
   - 动画/实时（`live`）：页面有 canvas（WebGL/2D 动画）→ `canvas.captureStream` 高质量录制；纯 DOM 动画 → html2canvas 逐帧
   - 滚动（`scroll`）：整页滚动逐帧录制
   - 自动检测
-- 面板设置：分辨率（720p/1080p）、帧率、时长（固定秒数/滚动到底/停止表达式/手动停止）、播放启动动作（点击选择器）、等待加载层隐藏、注入 JS、背景音乐混音、变速、输出格式（MP4/WebM）
+- 面板设置：分辨率（720p/1080p）、帧率、滚动速度、时长（固定秒数/滚动到底/停止表达式/手动停止）、播放启动动作（点击选择器）、等待加载层隐藏、注入 JS、背景音乐混音、变速、输出格式（MP4/WebM）
 - 转码：优先浏览器原生 MP4 录制；需要混音/变速时自动调用 ffmpeg.wasm（单线程，慢但可用）
 - 预览：录制过程实时预览输出画面
 
@@ -48,6 +48,7 @@ css/style.css         样式
 js/app.js             主逻辑（文件解析/录制/转码/下载）
 zipfs-sw.js           Service Worker 虚拟文件系统
 examples/anim.html    演示用 rAF canvas 动画页（30s）
+examples/long.html    演示用长页面（滚动模式）
 vendor/               html2canvas / fflate / ffmpeg.wasm（本地自持，免 CDN）
 ```
 
