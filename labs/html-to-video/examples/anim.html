@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>示例动画页 - rAF canvas</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b1020; overflow: hidden; }
+  canvas { display: block; }
+  #boot {
+    position: fixed; inset: 0; background: #0b1020; color: #fff; z-index: 10;
+    display: flex; align-items: center; justify-content: center; font: 24px sans-serif;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="boot">▶ 点击开始（或使用 Studio 的“播放启动动作: #boot”）</div>
+<canvas id="scene"></canvas>
+<script>
+  const DUR = 30;            // 30 秒时间轴
+  const cv = document.getElementById('scene');
+  const ctx = cv.getContext('2d');
+  let W, H, t = 0, playing = false, last = 0;
+  function resize() { W = cv.width = innerWidth; H = cv.height = innerHeight; }
+  resize(); addEventListener('resize', resize);
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (!playing) return;
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    t += dt;
+    if (t >= DUR) { playing = false; return; }
+    const p = t / DUR;
+    ctx.fillStyle = '#0b1020'; ctx.fillRect(0, 0, W, H);
+    // 背景渐变
+    const hue = 200 + 160 * p;
+    ctx.fillStyle = `hsl(${hue},60%,8%)`; ctx.fillRect(0, 0, W, H);
+    // 移动的圆
+    const x = W * (0.1 + 0.8 * ((t * 0.3) % 1));
+    const y = H * 0.5 + Math.sin(t * 1.2) * H * 0.25;
+    const r = 60 + 30 * Math.sin(t * 2);
+    const g = ctx.createRadialGradient(x, y, 5, x, y, r);
+    g.addColorStop(0, '#fff'); g.addColorStop(1, `hsl(${hue},90%,55%)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    // 旋转文字
+    ctx.save(); ctx.translate(W * 0.5, H * 0.2);
+    ctx.rotate(t * 0.8);
+    ctx.font = 'bold 40px sans-serif'; ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center'; ctx.fillText('HTML → VIDEO', 0, 0);
+    ctx.restore();
+    // 进度条
+    ctx.fillStyle = 'rgba(255,255,255,.25)';
+    ctx.fillRect(W * 0.1, H - 20, W * 0.8, 6);
+    ctx.fillStyle = '#4f8cff';
+    ctx.fillRect(W * 0.1, H - 20, W * 0.8 * p, 6);
+    // 时间码
+    ctx.fillStyle = '#fff'; ctx.font = '16px monospace';
+    ctx.textAlign = 'right'; ctx.fillText(t.toFixed(1) + 's / ' + DUR + 's', W - 16, 30);
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('boot').addEventListener('click', () => {
+    document.getElementById('boot').style.display = 'none';
+    playing = true; last = performance.now();
+  });
+  window.__DUR = DUR;
+</script>
+</body>
+</html>

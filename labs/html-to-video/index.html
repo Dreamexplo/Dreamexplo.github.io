@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HTML to Video Studio - 上传 HTML 转视频</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">HTML → Video Studio</div>
+  <div class="tag">上传 HTML / ZIP，配置参数，生成可下载视频</div>
+</header>
+
+<main class="layout">
+  <!-- 左侧：输入与设置 -->
+  <section class="panel" id="panelInput">
+    <div class="dropzone" id="dropZone">
+      <div class="dz-inner">
+        <div class="dz-icon">⬆</div>
+        <div class="dz-title">拖入 HTML 文件（或 ZIP 包）</div>
+        <div class="dz-hint">支持单 .html 文件，或含资源文件的 .zip（自动解析 index.html）<br>也可点此选择文件</div>
+      </div>
+      <input type="file" id="fileInput" accept=".html,.htm,.zip" hidden multiple>
+    </div>
+
+    <div class="filebox" id="fileBox" hidden>
+      <div class="filebox-title">已加载</div>
+      <div id="fileList"></div>
+      <div class="filebox-actions">
+        <button class="btn btn-sm" id="btnRemoveFiles">移除</button>
+      </div>
+    </div>
+
+    <fieldset class="form">
+      <legend>录制设置</legend>
+
+      <div class="row">
+        <label>录制模式</label>
+        <select id="optMode">
+          <option value="auto">自动检测（推荐）</option>
+          <option value="live">动画 / 实时（canvas 页面走 captureStream，DOM 动画走逐帧）</option>
+          <option value="scroll">滚动（整页滚动录屏）</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label>分辨率</label>
+        <select id="optSize">
+          <option value="1280x720">1280 × 720</option>
+          <option value="1920x1080">1920 × 1080</option>
+          <option value="1024x768">1024 × 768</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label>帧率 (fps)</label>
+        <select id="optFps">
+          <option value="10">10（默认，均衡）</option>
+          <option value="5">5（低配 / DOM 逐帧）</option>
+          <option value="12">12</option>
+          <option value="15">15</option>
+          <option value="24">24（流畅）</option>
+          <option value="30">30</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label>时长控制</label>
+        <select id="optDuration">
+          <option value="auto">自动（滚动到底 / 检测播放结束表达式）</option>
+          <option value="fixed">固定时长（秒）</option>
+          <option value="manual">手动停止</option>
+        </select>
+        <input type="number" id="optDurationSec" value="10" min="1" max="3600" disabled>
+      </div>
+
+      <div class="row">
+        <label>停止表达式（可选）</label>
+        <input type="text" id="optStopJs" placeholder="例：!document.body.classList.contains('playing')" title="iframe 内 evaluate，返回 true 时结束录制">
+      </div>
+
+      <div class="row">
+        <label>播放启动动作</label>
+        <input type="text" id="optClickSel" placeholder="加载后要点击的选择器，如 #btnPlay">
+      </div>
+
+      <div class="row">
+        <label>等待隐藏元素（可选）</label>
+        <input type="text" id="optWaitHidden" placeholder="等待消失的加载层，如 #loading">
+      </div>
+
+      <div class="row">
+        <label>启动等待（ms）</label>
+        <input type="number" id="optDelay" value="500" min="0" max="60000">
+      </div>
+
+      <div class="row">
+        <label>注入 JS（可选）</label>
+        <textarea id="optInjectJs" rows="2" placeholder="加载后执行的脚本，如隐藏开场遮罩：document.querySelector('#boot').style.display='none'"></textarea>
+      </div>
+
+      <div class="row">
+        <label>背景音乐（可选）</label>
+        <input type="file" id="optMusic" accept="audio/*">
+      </div>
+      <div class="row">
+        <label>音乐音量</label>
+        <input type="range" id="optMusicVol" min="0" max="100" value="70">
+      </div>
+
+      <div class="row">
+        <label>变速（倍速）</label>
+        <input type="number" id="optSpeed" value="1" min="0.25" max="4" step="0.25">
+      </div>
+
+      <div class="row">
+        <label>输出格式</label>
+        <select id="optFormat">
+          <option value="mp4">MP4（H.264，推荐）</option>
+          <option value="webm">WebM（无需转码，最快）</option>
+        </select>
+      </div>
+    </fieldset>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btnStart" disabled>开始录制</button>
+      <button class="btn" id="btnStop" disabled>停止</button>
+      <button class="btn" id="btnDownload" disabled>下载视频</button>
+    </div>
+
+    <div class="status" id="statusBar">等待上传 HTML…</div>
+    <div class="progress" id="progressWrap" hidden><div class="progress-bar" id="progressBar"></div></div>
+  </section>
+
+  <!-- 右侧：预览 -->
+  <section class="panel" id="panelPreview">
+    <div class="preview-head">预览</div>
+    <div class="preview-body">
+      <video id="preview" muted autoplay playsinline></video>
+      <div class="preview-empty" id="previewEmpty">上传后这里会显示页面；<br>录制中实时预览输出画面。</div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  说明：页面在你本地浏览器中渲染与录制（Canvas captureStream / html2canvas 逐帧 + ffmpeg.wasm 转码），文件不离开你的设备。ZIP 上传通过 Service Worker 提供同源虚拟目录，保证相对资源与 canvas 录制可用。
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/umd/ffmpeg.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
