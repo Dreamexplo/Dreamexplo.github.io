@@ -1,7 +1,7 @@
-ï»¿/* HTML-to-Video Studio - ä¸»é€»è¾‘
- * é“¾è·¯ï¼šä¸Šä¼ æ–‡ä»¶ â†’ æ„å»ºåŒæºè™šæ‹Ÿç›®å½•(SW) â†’ iframe åŠ è½½ç”¨æˆ·é¡µé¢ â†’
- *       è‡ªåŠ¨æ’­æ”¾/æ³¨å…¥ â†’ Canvas captureStream æˆ– html2canvas é€å¸§ â†’
- *       MediaRecorder å½•åˆ¶ â†’ åŸç”Ÿ mp4 æˆ– ffmpeg.wasm è½¬ç  â†’ ä¸‹è½½
+/* HTML-to-Video Studio - Ö÷Âß¼­
+ * Á´Â·£ºÉÏ´«ÎÄ¼ş ¡ú ¹¹½¨Í¬Ô´ĞéÄâÄ¿Â¼(SW) ¡ú iframe ¼ÓÔØÓÃ»§Ò³Ãæ ¡ú
+ *       ×Ô¶¯²¥·Å/×¢Èë ¡ú Canvas captureStream »ò html2canvas ÖğÖ¡ ¡ú
+ *       MediaRecorder Â¼ÖÆ ¡ú Ô­Éú mp4 »ò ffmpeg.wasm ×ªÂë ¡ú ÏÂÔØ
  */
 'use strict';
 
@@ -9,27 +9,74 @@ const $ = (id) => document.getElementById(id);
 
 const state = {
   files: null,          // { path: File/Blob }
-  entry: null,          // å…¥å£è·¯å¾„ï¼Œå¦‚ "/index.html"
+  entry: null,          // Èë¿ÚÂ·¾¶£¬Èç "/index.html"
   recorder: null,
   stream: null,
   timer: null,
   stopPoll: null,
   recording: false,
-  rawBlob: null,        // å½•åˆ¶åŸå§‹ blob (webm/mp4)
-  rawMime: '',          // å½•åˆ¶å®é™… mimeï¼ˆå« codecsï¼‰
-  resultBlob: null,     // æœ€ç»ˆä¸‹è½½ blob
+  rawBlob: null,        // Â¼ÖÆÔ­Ê¼ blob (webm/mp4)
+  rawMime: '',          // Â¼ÖÆÊµ¼Ê mime£¨º¬ codecs£©
+  resultBlob: null,     // ×îÖÕÏÂÔØ blob
   ffmpeg: null,
   swReady: false,
-  demoTab: null,        // æ¼”ç¤ºå½•åˆ¶ï¼šæ‰¿è½½ç”¨æˆ·é¡µé¢çš„æ–°æ ‡ç­¾é¡µ
-  demoStream: null,     // æ¼”ç¤ºå½•åˆ¶ï¼šæ•è·æµ
+  demoTab: null,        // ÑİÊ¾Â¼ÖÆ£º³ĞÔØÓÃ»§Ò³ÃæµÄĞÂ±êÇ©Ò³
+  demoStream: null,     // ÑİÊ¾Â¼ÖÆ£º²¶»ñÁ÷
   demoStart: 0,
-  blackWarn: false,     // äº§ç‰©ç–‘ä¼¼é»‘å±
-  canvasWarn: '',       // canvas ç©ºç™½/é™æ­¢ï¼ˆå¯èƒ½è¢«å¼€å§‹é®ç½©æŒ¡ä½ï¼‰
-  demoWarn: '',         // æ¼”ç¤ºå½•åˆ¶ï¼šæ•è·æºé€‰æ‹©ä¸å½“ï¼ˆæ•´å±/çª—å£ï¼‰
-  demoFocusBack: false, // æ¼”ç¤ºå½•åˆ¶ï¼šå¾…è½¬ç å®ŒæˆåæŠŠç„¦ç‚¹æ‹‰å› Studio
+  blackWarn: false,     // ²úÎïÒÉËÆºÚÆÁ
+  canvasWarn: '',       // canvas ¿Õ°×/¾²Ö¹£¨¿ÉÄÜ±»¿ªÊ¼ÕÚÕÖµ²×¡£©
+  demoWarn: '',         // ÑİÊ¾Â¼ÖÆ£º²¶»ñÔ´Ñ¡Ôñ²»µ±£¨ÕûÆÁ/´°¿Ú£©
+  demoFocusBack: false, // ÑİÊ¾Â¼ÖÆ£º´ı×ªÂëÍê³Éºó°Ñ½¹µãÀ­»Ø Studio
+  micStream: null,      // ÑİÊ¾Â¼ÖÆ£ºÂó¿Ë·ç½âËµÁ÷
+  audioCtx: null,       // ÑİÊ¾Â¼ÖÆ£ºÒôÆµ»ìºÏÉÏÏÂÎÄ
+  mixDest: null,        // ÑİÊ¾Â¼ÖÆ£º»ìºÏºóµÄÒôÆµ³ö¿Ú
+  demoRecorded: false,  // ±¾´ÎÊÇ·ñÑİÊ¾Â¼ÖÆ
+  voiceFile: null,      // µ¼ÈëµÄÅäÒôÒô¹ì
+  origVideoFile: null,  // µ¼ÈëµÄÔ­ÉùÊÓÆµ£¨»ØÉùÏû³ıÓÃ£©
+  musicFile: null,      // ±³¾°ÒôÀÖ
+  cfg: null,            // ±¾´ÎÂ¼ÖÆµÄ²ÎÊı¿ìÕÕ£¨Â¼ÖÆÖĞ¸ÄÃæ°å²»»áÎÛÈ¾µ±Ç°ÈÎÎñ£©
+  previewStream: null,  // ÖğÖ¡Ô¤ÀÀÁ÷
+  previewTrack: null,
+  foFallback: false,    // html2canvas ÎÄ×ÖÈ±Ê§Ê±×Ô¶¯ÇĞ foreignObject äÖÈ¾
+  videoInfo: null,      // ³ÉÆ¬ĞÅÏ¢ {frames, fps, seconds}
 };
 
-/* ---------- æ–‡ä»¶æ”¶é›† ---------- */
+/* ¶ÁÈ¡Ãæ°å²ÎÊıÉú³É¿ìÕÕ¡£
+ * ¹Ø¼ü£ºËùÓĞÂ¼ÖÆ/±àÂëÁ÷³ÌÖ»¶ÁÕâ·İ¿ìÕÕ£¬²»ÔÙÔÚäÖÈ¾ÖĞÍ¾Ö±½Ó¶Á DOM¡£
+ * ·ñÔòÓÃ»§Ò»¶¯Ãæ°å¿Ø¼ş£¨»á´¥·¢ change ¡ú Ô¤ÀÀÖØ½¨£©£¬ÕıÔÚÅÜµÄÂ¼ÖÆ¾Í»áÄÃµ½
+ * °ë½Ø²ÎÊı¡¢ÉõÖÁ¶ªµô iframe ÒıÓÃ£¬±íÏÖ¾ÍÊÇ¡°Ò»µ÷²ÎÊı¾ÍºÚÆÁ¡±¡£ */
+function readCfg() {
+  const el = (id) => document.getElementById(id);
+  const val = (id, d) => { const e = el(id); return e ? e.value : d; };
+  const on = (id) => { const e = el(id); return e ? !!e.checked : false; };
+  const num = (id, d) => { const v = parseFloat(val(id, '')); return Number.isFinite(v) ? v : d; };
+  return {
+    mode: val('optMode', 'auto'),
+    engine: val('optEngine', 'precise'),
+    size: val('optSize', '1280x720'),
+    fps: Math.max(1, parseInt(val('optFps', '10'), 10) || 10),
+    durMode: val('optDuration', 'fixed'),
+    fixedSec: num('optDurationSec', 10),
+    stopJs: String(val('optStopJs', '') || '').trim(),
+    scrollSpeed: num('optScrollSpeed', 150),
+    clickSel: String(val('optClickSel', '') || '').trim(),
+    waitHidden: String(val('optWaitHidden', '') || '').trim(),
+    delay: num('optDelay', 500),
+    injectJs: String(val('optInjectJs', '') || '').trim(),
+    format: val('optFormat', 'mp4'),
+    speed: (() => { const s = num('optSpeed', 1); return s > 0 ? s : 1; })(),
+    demoCrop: on('optDemoCrop'),
+    sysAudio: on('optAudio'),
+    voice: on('optVoice'),
+    voiceVol: num('optVoiceVol', 100) / 100,
+    sysVol: num('optSysVol', 80) / 100,
+    musicVol: num('optMusicVol', 70) / 100,
+    origVol: num('optOrigVol', 100) / 100,
+    voiceDelay: num('optVoiceDelay', 0),
+  };
+}
+
+/* ---------- ÎÄ¼şÊÕ¼¯ ---------- */
 async function collectFiles(entries) {
   const files = {};
   let entry = null;
@@ -54,7 +101,7 @@ async function collectFiles(entries) {
     }
   }
 
-  // ç¡®å®šå…¥å£ï¼šç”¨æˆ·æ˜¾å¼ç»™çš„ .html ä¼˜å…ˆï¼›å¦åˆ™ index.htmlï¼›å¦åˆ™ç¬¬ä¸€ä¸ª html
+  // È·¶¨Èë¿Ú£ºÓÃ»§ÏÔÊ½¸øµÄ .html ÓÅÏÈ£»·ñÔò index.html£»·ñÔòµÚÒ»¸ö html
   const htmls = Object.keys(files).filter(p => /\.html?$/i.test(p));
   const explicit = entries.filter(e => /\.html?$/i.test(e.name)).map(e => '/' + e.name.replace(/\\/g,'/'));
   entry = explicit[0]
@@ -62,33 +109,33 @@ async function collectFiles(entries) {
     || htmls.find(p => p.toLowerCase().endsWith('/index.htm'))
     || htmls[0] || '/index.html';
   if (!files[entry]) {
-    // å…œåº•ï¼šå…¥å£ä¸å­˜åœ¨åˆ™æ‰¾ä»»æ„ html æˆ–æŠ¥é”™
+    // ¶µµ×£ºÈë¿Ú²»´æÔÚÔòÕÒÈÎÒâ html »ò±¨´í
     const anyHtml = htmls[0];
-    if (!anyHtml) throw new Error('æœªæ‰¾åˆ° HTML å…¥å£æ–‡ä»¶');
+    if (!anyHtml) throw new Error('Î´ÕÒµ½ HTML Èë¿ÚÎÄ¼ş');
     entry = anyHtml;
   }
   return { files, entry };
 }
 
-/* ---------- Service Worker è™šæ‹Ÿç›®å½• ---------- */
+/* ---------- Service Worker ĞéÄâÄ¿Â¼ ---------- */
 async function setupVFS() {
-  if (!('serviceWorker' in navigator)) throw new Error('å½“å‰ç¯å¢ƒä¸æ”¯æŒ Service Workerï¼ˆéœ€ https æˆ– localhostï¼‰');
+  if (!('serviceWorker' in navigator)) throw new Error('µ±Ç°»·¾³²»Ö§³Ö Service Worker£¨Ğè https »ò localhost£©');
   const reg = await navigator.serviceWorker.register('zipfs-sw.js', { scope: './' });
   await navigator.serviceWorker.ready;
   const sw = reg.active || navigator.serviceWorker.controller;
   await new Promise((resolve, reject) => {
     const ch = new MessageChannel();
-    ch.port1.onmessage = (ev) => ev.data.ok ? resolve() : reject(new Error('VFS è®¾ç½®å¤±è´¥'));
+    ch.port1.onmessage = (ev) => ev.data.ok ? resolve() : reject(new Error('VFS ÉèÖÃÊ§°Ü'));
     sw.postMessage({ type: 'VFS_SET', files: state.files }, [ch.port2]);
   });
   state.swReady = true;
 }
 
-/* ---------- å½•åˆ¶ ---------- */
+/* ---------- Â¼ÖÆ ---------- */
 const frame = { iframe: null, wrap: null, win: null, doc: null, outCanvas: null, outCtx: null, W: 0, H: 0 };
 
-/* iframe å¿…é¡»ä½äºå¯è§åŒºåŸŸå¹¶çœŸå®æ¸²æŸ“ï¼Œå¦åˆ™ canvas ä¸å‡ºå¸§ã€rAF è¢«èŠ‚æµï¼›
-   è¿™é‡Œæ”¾è¿›å³ä¾§é¢„è§ˆé¢æ¿ï¼ŒæŒ‰å®¹å™¨å°ºå¯¸ç­‰æ¯”ç¼©æ”¾æ˜¾ç¤ºã€‚ */
+/* iframe ±ØĞëÎ»ÓÚ¿É¼ûÇøÓò²¢ÕæÊµäÖÈ¾£¬·ñÔò canvas ²»³öÖ¡¡¢rAF ±»½ÚÁ÷£»
+   ÕâÀï·Å½øÓÒ²àÔ¤ÀÀÃæ°å£¬°´ÈİÆ÷³ß´çµÈ±ÈËõ·ÅÏÔÊ¾¡£ */
 function buildIframe() {
   if (frame.wrap) { frame.wrap.remove(); frame.wrap = null; }
   if (frame.iframe) { frame.iframe.remove(); }
@@ -113,13 +160,48 @@ function fitStage() {
   if (!wrap) return;
   const host = wrap.parentElement;
   if (!host) return;
-  const k = Math.min(host.clientWidth / frame.W, host.clientHeight / frame.H) * 0.96 || 0.3;
+  const cw = host.clientWidth, ch = host.clientHeight;
+  /* ÈİÆ÷³ß´çÎª 0£¨ÒÆ¶¯¶ËµØÖ·À¸ÊÕÆğ¡¢Ãæ°åÕÛµş¡¢²¼¾ÖÇĞ»»µÄË²¼ä£©Ê±²»ÄÜÖØËã£¬
+     ·ñÔò scale »áËã³É 0£¬Ô¤ÀÀÇø¿´ÆğÀ´¾ÍÊÇ¡°Ò»µ÷Ãæ°å¾ÍºÚÆÁ¡±¡£ */
+  if (cw < 8 || ch < 8) return;
+  const k = Math.min(cw / frame.W, ch / frame.H) * 0.96;
+  if (!Number.isFinite(k) || k <= 0) return;
   wrap.style.transform = `translate(-50%,-50%) scale(${k})`;
 }
 window.addEventListener('resize', fitStage);
+window.addEventListener('orientationchange', () => setTimeout(fitStage, 150));
+if (window.visualViewport) window.visualViewport.addEventListener('resize', fitStage);
+if (window.ResizeObserver) {
+  const hostEl = document.querySelector('.preview-body');
+  if (hostEl) new ResizeObserver(() => fitStage()).observe(hostEl);
+}
+
+/* Ö»¸ÄÎèÌ¨³ß´ç£¬²»ÖØ½¨ iframe / ²»ÖØÔØÒ³Ãæ£º
+   Ãæ°åÀïµ÷·Ö±æÂÊ¡¢µ÷²ÎÊıÊ±Ô¤ÀÀÊ¼ÖÕ±£³ÖÔÚÆÁ£¬²»»áÒòÎªÖØ½¨ iframe ±ä³ÉºÚÆÁ¡£ */
+function resizeStage() {
+  if (!frame.wrap) return;
+  const [W, H] = currentSize();
+  if (!W || !H) return;
+  frame.W = W; frame.H = H;
+  frame.wrap.style.width = W + 'px';
+  frame.wrap.style.height = H + 'px';
+  if (frame.iframe) { frame.iframe.width = String(W); frame.iframe.height = String(H); }
+  try { frame.win && frame.win.dispatchEvent(new Event('resize')); } catch (e) {}
+  fitStage();
+}
 
 function currentSize() {
-  return $('optSize').value.split('x').map(Number);
+  const v = ($('optSize') && $('optSize').value) || '1280x720';
+  const [w, h] = v.split('x').map(Number);
+  return [w || 1280, h || 720];
+}
+
+/* ÒÆ¶¯¶Ë / ´¥ÆÁÉè±¸ÅĞ¶¨£ºÓÃÓÚÊÕÆğ×ÀÃæ×¨ÊôÄÜÁ¦£¨±êÇ©Ò³²É¼¯¡¢³¤Ê±³¤Â¼ÖÆ£© */
+function isMobile() {
+  const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  const small = Math.min(window.innerWidth, window.innerHeight) <= 820;
+  const ua = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(navigator.userAgent);
+  return ua || (coarse && small);
 }
 
 async function loadUserPage() {
@@ -128,12 +210,116 @@ async function loadUserPage() {
   frame.W = W; frame.H = H;
   await new Promise((resolve, reject) => {
     frame.iframe.onload = () => resolve();
-    frame.iframe.onerror = () => reject(new Error('ç”¨æˆ·é¡µé¢åŠ è½½å¤±è´¥'));
+    frame.iframe.onerror = () => reject(new Error('ÓÃ»§Ò³Ãæ¼ÓÔØÊ§°Ü'));
     frame.iframe.src = './__vfs__' + state.entry;
-    setTimeout(() => reject(new Error('ç”¨æˆ·é¡µé¢åŠ è½½è¶…æ—¶(20s)')), 20000);
+    setTimeout(() => reject(new Error('ÓÃ»§Ò³Ãæ¼ÓÔØ³¬Ê±(20s)')), 20000);
   });
   frame.win = frame.iframe.contentWindow;
   frame.doc = frame.iframe.contentDocument;
+  await injectPageCompat();
+}
+
+/* ---------- ÀàÊÓÆµ HTML Ò³Ãæ¼æÈİ²ã£¨ÎÊÌâ 6£© ----------
+ * ºÜ¶à¡°ÊÓÆµÊ½¡±HTML Ò³Ãæ£¨È«ÆÁ stage + top:50%+translate(-50%,-50%) ¾ÓÖĞ +
+ * ¹Ì¶¨ÏñËØ×ÖºÅ + html2canvas ÎŞ·¨½âÎöµÄÏÖ´ú CSS£©ÔÚÀëÆÁ¿ËÂ¡Àï»á±»ÕûÌå´íÎ»¡¢
+ * ÎÄ×Ö±»²Ãµô»ò×ÖºÅ±»Ñ¹³É 1px£¬³ÉÆ¬Àï¾Í³ÉÁË¡°¿´²»µ½×Ö¡±µÄºÚ¿é¡£
+ * ĞŞ¸´·½Ê½£ºÔÚäÖÈ¾Ç°°ÑÕâĞ©Ò³ÃæÁÙÊ±ÇĞ³É¡°¾²Ì¬¿ìÕÕÄ£Ê½¡±¡ª¡ª
+ * 1) È¥µôÓ°Ïì¿ËÂ¡¶¨Î»µÄ¾ÓÖĞ transform / ¹Ì¶¨¶¨Î»£¬¸ÄÎª 0 Æğµã²¼¾Ö£»
+ * 2) ¸ø×ÖºÅ¼ÓÉÏ²»ÒÀÀµ rem/vw µÄ¶µµ×£»
+ * 3) ¹Ø±Õ html2canvas ²»Ö§³ÖµÄ backdrop-filter µÈÊôĞÔ£»
+ * 4) äÖÈ¾½áÊø£¨finally£©Á¢¼´»¹Ô­£¬²»Ó°ÏìÓÃ»§Ô­Ò³Ãæ¡£ */
+const COMPAT_LOCK = '__mcv_compat_lock';
+
+function injectPageCompat() {
+  return (async () => {
+    try {
+      const doc = frame.doc, win = frame.win;
+      if (!doc) return;
+      const st = doc.createElement('style');
+      st.id = '__mcv_compat_css';
+      st.textContent = `
+        /* html2canvas ÎŞ·¨»æÖÆ£º»áµ¼ÖÂÕûÒ³äÖÈ¾Ê§°Ü»òÔªËØÏûÊ§ */
+        *{ -webkit-backdrop-filter:none !important; backdrop-filter:none !important;
+           mix-blend-mode:normal !important; }
+        /* ¾É°æ html2canvas ¶Ô 8 Î»É«½âÊÍ´íÎó */
+        html, body{ filter:none !important; }
+        /* ÎÄ×Ö¹âÕ¤¼Ó¹Ì£º±ÜÃâÀëÆÁ¿ËÂ¡Ê±ÎÄ×Ö±»²Ã¼ô/Í¸Ã÷»¯ */
+        h1,h2,h3,h4,h5,h6,p,span,div,li,td,th,a,button{
+          text-rendering:optimizeLegibility;
+          -webkit-font-smoothing:antialiased;
+        }
+      `;
+      (doc.head || doc.documentElement).appendChild(st);
+      /* ¼ÇÂ¼Ò³Ãæ×ÔÉíµÄÊäÈë¼àÌıÊı£¬¹© auto Ä£Ê½ÅĞ¶¨½»»¥Ò³ */
+      try {
+        win.__MCV = win.__MCV || {};
+        if (typeof win.__MCV.input !== 'number') win.__MCV.input = 0;
+      } catch (e) {}
+    } catch (e) {
+      console.warn('[compat]', e && e.message);
+    }
+  })();
+}
+
+/* ½øÈë¾²Ì¬¿ìÕÕÄ£Ê½£º°Ñ¡°ÆÌÂúÊÓ¿Ú + ¾ÓÖĞ transform¡±µÄÎèÌ¨²ãÌ¯Æ½¡£
+ * ·µ»Ø restore()£¬±ØĞëÔÚ finally ÖĞµ÷ÓÃ¡£ */
+function enterStaticSnapshot(doc, win) {
+  const undo = [];
+  try {
+    if (doc.documentElement && doc.documentElement.hasAttribute(COMPAT_LOCK)) {
+      /* ÒÑ±»ÆäËüÁ÷³ÌËø¶¨£¬±ÜÃâÖØ¸´µş¼Ó */
+    }
+    const body = doc.body;
+    if (body) {
+      const prevOverflow = doc.documentElement.style.overflow;
+      doc.documentElement.style.overflow = 'visible';
+      undo.push(() => { doc.documentElement.style.overflow = prevOverflow; });
+      const prevBodyOverflow = body.style.overflow;
+      body.style.overflow = 'visible';
+      undo.push(() => { body.style.overflow = prevBodyOverflow; });
+    }
+    /* ¹Ø¼üĞŞ¸´£ºÕÒµ½ÓÃ left/top 50% + translate(-50%,-50%) ¾ÓÖĞµÄÈİÆ÷£¬
+       ÕâÖÖ²¼¾ÖÔÚ html2canvas µÄ¿ËÂ¡Àï»áÕûÌåÆ«ÒÆ°ëÆÁ£¬ÎÄ×Ö±»²Ã³ö»­²¼¡£ */
+    const cands = doc.querySelectorAll('#stage, .stage, #app, .app, #root, .root, [class*="stage"], [class*="wrap"]');
+    cands.forEach((el) => {
+      let cs;
+      try { cs = win.getComputedStyle(el); } catch (e) { return; }
+      const t = cs.transform || '';
+      const centered = /translate\(-50%,\s*-50%\)/.test(t) || /matrix\(1,\s*0,\s*0,\s*1,\s*-/.test(t);
+      const absoluteCentered = (cs.position === 'absolute' || cs.position === 'fixed')
+        && /50%/.test(cs.left || '') && /50%/.test(cs.top || '');
+      if (!centered && !absoluteCentered) return;
+      const prev = el.getAttribute('style') || '';
+      el.style.setProperty('left', '0', 'important');
+      el.style.setProperty('top', '0', 'important');
+      el.style.setProperty('right', 'auto', 'important');
+      el.style.setProperty('bottom', 'auto', 'important');
+      el.style.setProperty('margin', '0', 'important');
+      el.style.setProperty('transform', 'none', 'important');
+      el.style.setProperty('position', 'relative', 'important');
+      undo.push(() => { el.setAttribute('style', prev); });
+    });
+    /* ×ÖºÅ¶µµ×£ºrem/vw ÔÚÀëÆÁ¿ËÂ¡Àï½âÎöÒì³£Ê±£¬Ç¿ÖÆÒ»¸ö¿É¶ÁÏÂÏŞ */
+    const small = [];
+    doc.querySelectorAll('body *').forEach((el) => {
+      if (el.children.length > 0) return;
+      const txt = (el.textContent || '').trim();
+      if (!txt) return;
+      let cs;
+      try { cs = win.getComputedStyle(el); } catch (e) { return; }
+      const fs = parseFloat(cs.fontSize) || 0;
+      if (fs > 0 && fs < 9) {
+        small.push([el, el.style.fontSize]);
+        el.style.setProperty('font-size', '12px', 'important');
+      }
+    });
+    small.forEach(([el, prev]) => undo.push(() => { el.style.fontSize = prev; }));
+    doc.documentElement.setAttribute(COMPAT_LOCK, '1');
+    undo.push(() => doc.documentElement.removeAttribute(COMPAT_LOCK));
+  } catch (e) {
+    console.warn('[static-snapshot]', e && e.message);
+  }
+  return () => { while (undo.length) { try { undo.pop()(); } catch (e) {} } };
 }
 
 async function waitHidden(sel, timeout = 15000) {
@@ -144,12 +330,12 @@ async function waitHidden(sel, timeout = 15000) {
     if (hidden) return;
     await sleep(300);
   }
-  // ä¸å¼ºåˆ¶å¤±è´¥ï¼šåŠ è½½å±‚å¯èƒ½æ—©å·²ä¸å­˜åœ¨
+  // ²»Ç¿ÖÆÊ§°Ü£º¼ÓÔØ²ã¿ÉÄÜÔçÒÑ²»´æÔÚ
 }
 
 async function clickSel(sel) {
   if (!sel) return;
-  await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) throw new Error('click é€‰æ‹©å™¨ä¸å­˜åœ¨: ${sel.replace(/'/g,"\\'")}'); el.click(); return true; })()`);
+  await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) throw new Error('click Ñ¡ÔñÆ÷²»´æÔÚ: ${sel.replace(/'/g,"\\'")}'); el.click(); return true; })()`);
 }
 
 async function evaluate(js) {
@@ -158,7 +344,7 @@ async function evaluate(js) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-/* ç›®æ ‡è¾“å‡ºå°ºå¯¸ï¼šé€å¸§æ¨¡å¼ç”¨ frame.W/Hï¼Œæ¼”ç¤ºæ¨¡å¼æŒ‰ä¸‹æ‹‰æ¡†è§£æ */
+/* Ä¿±êÊä³ö³ß´ç£ºÖğÖ¡Ä£Ê½ÓÃ frame.W/H£¬ÑİÊ¾Ä£Ê½°´ÏÂÀ­¿ò½âÎö */
 function outputSize() {
   if (frame.W && frame.H) return [frame.W, frame.H];
   const [w, h] = String($('optSize').value || '1280x720').split('x').map(Number);
@@ -171,8 +357,8 @@ async function prepareOutputCanvas() {
   frame.outCtx = frame.outCanvas.getContext('2d');
 }
 
-/* åªæœ‰â€œé“ºæ»¡è§†å£â€çš„ canvas æ‰é€‚åˆç›´å½•ï¼šå°äº 70% è§†å£çš„ canvas å¾€å¾€åªæ˜¯èƒŒæ™¯å±‚/å›¾è¡¨ï¼Œ
-   ç›´å½•ä¼šä¸¢æ‰æ•´é¡µ DOM å†…å®¹ï¼ˆæ­¤å‰ auto æ¨¡å¼è¯¯åˆ¤ä¸º canvas é¡µé¢çš„ä¸»è¦åŸå› ï¼‰ã€‚ */
+/* Ö»ÓĞ¡°ÆÌÂúÊÓ¿Ú¡±µÄ canvas ²ÅÊÊºÏÖ±Â¼£ºĞ¡ÓÚ 70% ÊÓ¿ÚµÄ canvas ÍùÍùÖ»ÊÇ±³¾°²ã/Í¼±í£¬
+   Ö±Â¼»á¶ªµôÕûÒ³ DOM ÄÚÈİ£¨´ËÇ° auto Ä£Ê½ÎóÅĞÎª canvas Ò³ÃæµÄÖ÷ÒªÔ­Òò£©¡£ */
 function pickCanvas(minRatio) {
   if (!frame.doc) return null;
   const vw = frame.W, vh = frame.H;
@@ -191,7 +377,48 @@ function pickCanvas(minRatio) {
   return null;
 }
 
-/* canvas ä¹‹å¤–æ˜¯å¦è¿˜æœ‰å¯è§ DOM æ–‡æ¡ˆï¼ˆæ ‡é¢˜/æŒ‰é’®ç­‰ï¼‰ã€‚æœ‰åˆ™ä¸èƒ½åªå½• canvas å±‚ã€‚ */
+/* canvas Ö®ÍâÊÇ·ñ»¹ÓĞ¿É¼û DOM ÎÄ°¸£¨±êÌâ/°´Å¥µÈ£©¡£ÓĞÔò²»ÄÜÖ»Â¼ canvas ²ã¡£ */
+/* canvas ÉÏ·½ÊÇ·ñ´æÔÚ¿É¼ûµÄ DOM ¸²¸Ç²ã£¨±êÌâ¡¢×ÖÄ»¡¢°´Å¥¡¢¼Æ·Ö°å¡­£©¡£
+ * Ö»Â¼ canvas ÏñËØµÄ¡°Ö±Â¼¡±Ä£Ê½»á°ÑÕâÀà¸²¸Ç²ãÕû¿é¶ªµô£¬³ÉÆ¬ÀïÎÄ×Ö¾ÍÏûÊ§ÁË£¬
+ * ËùÒÔ¾ö¶¨ÊÇ·ñÖ±Â¼Ö®Ç°±ØĞëÏÈÁ¿Ò»ÏÂ¸²¸ÇÃæ»ıÕ¼±È¡£ */
+function canvasOverlayRatio(doc, canvas) {
+  if (!doc || !canvas) return 0;
+  const win = doc.defaultView || window;
+  const cr = canvas.getBoundingClientRect();
+  if (cr.width < 2 || cr.height < 2) return 0;
+  const areaC = cr.width * cr.height;
+  let covered = 0;
+  doc.querySelectorAll('body *').forEach((el) => {
+    if (el === canvas || el.contains(canvas) || canvas.contains(el)) return;
+    const cs = win.getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return;
+    if (parseFloat(cs.opacity || '1') < 0.05) return;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const ix = Math.min(cr.right, r.right) - Math.max(cr.left, r.left);
+    const iy = Math.min(cr.bottom, r.bottom) - Math.max(cr.top, r.top);
+    if (ix <= 0 || iy <= 0) return;
+    /* Ö»¿´¡°×Ô´øÊÓ¾õÄÚÈİ¡±µÄÔªËØ£ºÓĞ¿É¼û±³¾°¡¢ÓĞÍ¼Æ¬/ÊÓÆµ£¬»òÖ±½Óº¬¿É¼ûÎÄ×Ö */
+    let visible = false;
+    const bg = cs.backgroundColor || '';
+    const m = /rgba?\(([^)]+)\)/.exec(bg);
+    if (m) {
+      const p = m[1].split(',').map(v => parseFloat(v.trim()));
+      if ((p.length > 3 ? p[3] : 1) > 0.05) visible = true;
+    }
+    if (!visible && cs.backgroundImage && cs.backgroundImage !== 'none') visible = true;
+    if (!visible && /^(IMG|VIDEO|SVG|PICTURE)$/.test(el.tagName)) visible = true;
+    if (!visible) {
+      const direct = Array.prototype.some.call(el.childNodes, (n) =>
+        n.nodeType === 3 && n.nodeValue && n.nodeValue.trim().length > 0);
+      if (direct) visible = true;
+    }
+    if (!visible) return;
+    covered += ix * iy;
+  });
+  return Math.min(1, covered / areaC);
+}
+
 function hasDomText(doc) {
   const walker = doc.createTreeWalker(doc.body || doc.documentElement, NodeFilter.SHOW_TEXT);
   let n = 0, txt = '';
@@ -210,16 +437,16 @@ function hasDomText(doc) {
   return false;
 }
 
-/* é¡µé¢æ˜¯å¦å­˜åœ¨æ—¶é—´è½´åŠ¨æ•ˆï¼ˆCSS animation / transition / WAAPIï¼‰ */
+/* Ò³ÃæÊÇ·ñ´æÔÚÊ±¼äÖá¶¯Ğ§£¨CSS animation / transition / WAAPI£© */
 function hasMotion(doc) {
   try { return (doc.getAnimations ? doc.getAnimations().length : 0) > 0; } catch (e) { return false; }
 }
 
-/* ---------- ä¿ç•™åŠ¨ç”»å½“å‰è§†è§‰çŠ¶æ€ï¼ˆå…³é”®ä¿®å¤ï¼‰ ----------
- * html2canvas ä¼šæŠŠæ–‡æ¡£å…‹éš†åˆ°ç¦»å±å‰¯æœ¬å†ç»˜åˆ¶ï¼Œå…‹éš†å‰¯æœ¬é‡Œçš„ CSS åŠ¨ç”»/è¿‡æ¸¡ä¼šä»å¤´é‡æ”¾ï¼Œ
- * å› æ­¤é€å¸§æˆªåˆ°çš„æ°¸è¿œæ˜¯åŠ¨ç”»èµ·å§‹å¸§ â€”â€” è¿™å°±æ˜¯â€œè§†é¢‘é‡Œæ²¡æœ‰åŠ¨æ•ˆâ€çš„æ ¹å› ã€‚
- * è¿™é‡Œåœ¨ onclone é‡ŒæŠŠæºæ–‡æ¡£å½“å‰æ—¶åˆ»çš„è®¡ç®—æ ·å¼ï¼ˆtransform/opacity/filter/...ï¼‰å†™å…¥å…‹éš†èŠ‚ç‚¹ï¼Œ
- * å¹¶åœæ‰å…‹éš†å‰¯æœ¬çš„åŠ¨ç”»ï¼Œä¿è¯æ¯ä¸€å¸§æˆªåˆ°çš„å°±æ˜¯è¯¥æ—¶åˆ»çš„çœŸå®ç”»é¢ã€‚ */
+/* ---------- ±£Áô¶¯»­µ±Ç°ÊÓ¾õ×´Ì¬£¨¹Ø¼üĞŞ¸´£© ----------
+ * html2canvas »á°ÑÎÄµµ¿ËÂ¡µ½ÀëÆÁ¸±±¾ÔÙ»æÖÆ£¬¿ËÂ¡¸±±¾ÀïµÄ CSS ¶¯»­/¹ı¶É»á´ÓÍ·ÖØ·Å£¬
+ * Òò´ËÖğÖ¡½Øµ½µÄÓÀÔ¶ÊÇ¶¯»­ÆğÊ¼Ö¡ ¡ª¡ª Õâ¾ÍÊÇ¡°ÊÓÆµÀïÃ»ÓĞ¶¯Ğ§¡±µÄ¸ùÒò¡£
+ * ÕâÀïÔÚ onclone Àï°ÑÔ´ÎÄµµµ±Ç°Ê±¿ÌµÄ¼ÆËãÑùÊ½£¨transform/opacity/filter/...£©Ğ´Èë¿ËÂ¡½Úµã£¬
+ * ²¢Í£µô¿ËÂ¡¸±±¾µÄ¶¯»­£¬±£Ö¤Ã¿Ò»Ö¡½Øµ½µÄ¾ÍÊÇ¸ÃÊ±¿ÌµÄÕæÊµ»­Ãæ¡£ */
 const BAKE_PROPS = [
   'transform', 'transform-origin', 'transform-box', 'opacity', 'filter', 'backdrop-filter',
   'box-shadow', 'background-color', 'background-position', 'border-radius',
@@ -228,7 +455,7 @@ const BAKE_PROPS = [
 ];
 
 function tagAnimatedTargets(doc) {
-  const map = new Map();          // id -> æºå…ƒç´ 
+  const map = new Map();          // id -> Ô´ÔªËØ
   const anims = [];
   try { anims.push(...(doc.getAnimations ? doc.getAnimations() : [])); } catch (e) {}
   let idx = 0;
@@ -270,49 +497,129 @@ function bakeAnimated(sourceDoc, clonedDoc, targets) {
       node.style.setProperty('animation', 'none', 'important');
       node.style.setProperty('transition', 'none', 'important');
     } catch (e) {}
-    // ä¼ªå…ƒç´ åŠ¨ç”»æ— æ³•çƒ˜ç„™ï¼Œç›´æ¥é™é»˜éšè—åŠ¨ç”»å±‚ï¼ˆé¿å…é‡å¤ç»˜åˆ¶èµ·ç‚¹çŠ¶æ€ï¼‰
+    // Î±ÔªËØ¶¯»­ÎŞ·¨ºæ±º£¬Ö±½Ó¾²Ä¬Òş²Ø¶¯»­²ã£¨±ÜÃâÖØ¸´»æÖÆÆğµã×´Ì¬£©
   });
 }
 
-/* æ¸²æŸ“ä¸€å¸§ï¼ˆå¸¦åŠ¨ç”»çŠ¶æ€çƒ˜ç„™ï¼‰
- * æ³¨æ„ï¼šå¿…é¡»æ˜¾å¼ç»™å‡º width/height è£å‰ªåŒºåŸŸï¼Œå¦åˆ™ html2canvas ä¼šæŠŠæ•´ç¯‡æ–‡æ¡£
- * ï¼ˆå¯èƒ½ä¸Šä¸‡åƒç´ é«˜ï¼‰æ•´ä½“æ …æ ¼åŒ–åç¼©æ”¾åˆ°è§†å£ï¼Œç”»é¢è¢«çºµå‘å‹æ‰ã€‚ */
-async function renderFrameCanvas(doc, vw, vh, scale, targets, scrollTop, repaint) {
+/* Ïà¶ÔÁÁ¶È£¨0=ºÚ 1=°×£©£¬ÓÃÀ´ÅĞ¶Ïµ×É«ÉîÇ³£¬¾ö¶¨Òª²»Òª¸øÎÄ×Ö¶µ°×É« */
+function relLuminance(color) {
+  const m = /rgba?\(([^)]+)\)/.exec(color || '');
+  let r, g, b;
+  if (m) {
+    const p = m[1].split(',').map(s => parseFloat(s.trim()));
+    r = p[0]; g = p[1]; b = p[2];
+  } else if (/^#([0-9a-f]{6})$/i.test(color || '')) {
+    const h = color.slice(1);
+    r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16);
+  } else if (/^#([0-9a-f]{3})$/i.test(color || '')) {
+    const h = color.slice(1);
+    r = parseInt(h[0] + h[0], 16); g = parseInt(h[1] + h[1], 16); b = parseInt(h[2] + h[2], 16);
+  } else {
+    return null;
+  }
+  if ([r, g, b].some(v => typeof v !== 'number' || isNaN(v))) return null;
+  const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+
+/* °Ñ canvas µ±Ç°ÏñËØºæ±º½ø html2canvas µÄ¿ËÂ¡¸±±¾£¨×÷ÎªÔªËØ±³¾°Í¼£©¡£
+ * ÎªÊ²Ã´±ØĞëÕâÃ´×ö£ºhtml2canvas ÄÃ²»µ½ canvas µÄÕæÊµÏñËØ£¨¿ËÂ¡ÀïÊÇ¿Õ°×£©£¬
+ * Ô­À´µÄ×ö·¨ÊÇ¡°½ØÍêÍ¼ÔÙ°Ñ canvas ÏñËØÕû¿é¸ÇÉÏÈ¥¡±£¬µ«ÕûÆÁ canvas »á°Ñ¸ÇÔÚËüÉÏ·½µÄ
+ * DOM ÎÄ×Ö£¨Æ¬Ãû¡¢×ÖÄ»¡¢°´Å¥£©Ò»ÆğÍ¿µô ¡ª¡ª ³ÉÆ¬¾Í±ä³É¡°ÓĞ»­ÃæÃ»ÎÄ×Ö¡±¡£
+ * ºæ±º½ø¿ËÂ¡ºó£¬html2canvas °´ DOM Ë³Ğò»æÖÆ£ºÏÈ canvas Í¼Ïñ¡¢ÔÙÉÏ²ãµÄÎÄ×Ö£¬²ã¼¶ÕıÈ·¡£
+ * ·µ»Ø³É¹¦ºæ±ºµÄÔ´ canvas ¼¯ºÏ£¬¹© paintLiveLayers Ìø¹ı£¨±ÜÃâÖØ¸´¸²¸Ç£©¡£ */
+function bakeCanvasPixels(sourceDoc, clonedDoc, skipSet) {
+  const src = Array.from(sourceDoc.querySelectorAll('canvas'));
+  const cl = Array.from(clonedDoc.querySelectorAll('canvas'));
+  let n = 0;
+  for (let i = 0; i < src.length && i < cl.length; i++) {
+    const s = src[i], c = cl[i];
+    if (!s || !c || s.width < 1 || s.height < 1) continue;
+    let url = '';
+    try { url = s.toDataURL('image/png'); } catch (e) { url = ''; }   // ¿çÓòÎÛÈ¾ ¡ú ½µ¼¶Îª²¹»æ
+    if (!url || url.length < 32) continue;
+    try {
+      c.style.setProperty('background-image', 'url("' + url + '")', 'important');
+      c.style.setProperty('background-size', '100% 100%', 'important');
+      c.style.setProperty('background-repeat', 'no-repeat', 'important');
+      if (skipSet) skipSet.add(s);
+      n++;
+    } catch (e) { /* µ¥¸öÊ§°Ü²»Ó°ÏìÕûÖ¡ */ }
+  }
+  return n;
+}
+
+/* äÖÈ¾Ò»Ö¡£¨´ø¶¯»­×´Ì¬ºæ±º£©
+ * ×¢Òâ£º±ØĞëÏÔÊ½¸ø³ö width/height ²Ã¼ôÇøÓò£¬·ñÔò html2canvas »á°ÑÕûÆªÎÄµµ
+ * £¨¿ÉÄÜÉÏÍòÏñËØ¸ß£©ÕûÌåÕ¤¸ñ»¯ºóËõ·Åµ½ÊÓ¿Ú£¬»­Ãæ±»×İÏòÑ¹±â¡£ */
+async function renderFrameCanvas(doc, vw, vh, scale, targets, scrollTop, repaint, extra) {
+  const opts = extra || {};
   const target = doc.documentElement || doc.body;
   const sy = Math.max(0, scrollTop || 0);
-  const out = await html2canvas(target, {
-    scale,
+  const bakedCanvases = new WeakSet();
+  const base = {
     useCORS: true,
     allowTaint: false,
-    backgroundColor: '#000',
+    backgroundColor: opts.bg || '#000',
     windowWidth: vw,
     windowHeight: vh,
-    width: vw,
-    height: vh,
-    x: 0,
-    y: sy,
-    scrollX: 0,
-    scrollY: sy,
     logging: false,
-    onclone: (clonedDoc) => bakeAnimated(doc, clonedDoc, targets),
-  });
-  /* è¡¥ç”» canvas / videoï¼šå…ˆè®©é¡µé¢é‡ç»˜ä¸€æ¬¡ï¼Œç¡®ä¿èƒ½è¯»åˆ° WebGL çš„çœŸå®åƒç´  */
+    onclone: (clonedDoc) => {
+      bakeAnimated(doc, clonedDoc, targets);
+      /* canvas ÏñËØ±ØĞëÏÈºæ±º½ø¿ËÂ¡£¬·ñÔòºóÖÃ²¹»æ»á¸Ç×¡µşÔÚ canvas ÉÏµÄÎÄ×Ö */
+      try { bakeCanvasPixels(doc, clonedDoc, bakedCanvases); } catch (e) {}
+      /* ¿ËÂ¡¸±±¾ÀïÍ¬Ñù¹Øµô html2canvas ²»Ö§³ÖµÄÊôĞÔ£¨style ÔÚ onclone ºó²Å»á±»½âÎö£¬
+         ÕâÀïÔÙ×öÒ»´Î¶µµ×£¬·ÀÖ¹¿ËÂ¡Ê±¶ªµô head ÀïµÄ¼æÈİÑùÊ½£© */
+      try {
+        const cs = clonedDoc.createElement('style');
+        cs.textContent = '*{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;mix-blend-mode:normal!important}';
+        (clonedDoc.head || clonedDoc.documentElement).appendChild(cs);
+        if (opts.textSafe) {
+          const fs = clonedDoc.createElement('style');
+          /* Ö»°´µ×É«ÉîÇ³¾ö¶¨ÎÄ×Ö¶µµ×É«£ºÉîµ×°××Ö¡¢Ç³µ×²»¸²Ğ´¡£
+             ÒÔÇ°ÎŞÌõ¼ş body{color:#fff} »á°ÑÇ³É«Ò³ÃæµÄºÚ×ÖÏ´³É°×Ö½°××Ö¡£ */
+          const bgLum = relLuminance(opts.bg);
+          const safeRule = bgLum !== null && bgLum > 0.62 ? '' : 'body{color:#fff!important}';
+          fs.textContent = 'body *{filter:none!important;text-shadow:none!important}' + safeRule;
+          (clonedDoc.head || clonedDoc.documentElement).appendChild(fs);
+        }
+      } catch (e) {}
+    },
+  };
+  let out;
+  if (opts.fullDoc) {
+    /* ¾²Ì¬¿ìÕÕÄ£Ê½£¨ÀàÊÓÆµÒ³Ãæ£©£º²»²ÃÊÓ¿Ú£¬ÕûÆªÎÄµµÒ»´ÎĞÔÕ¤¸ñ»¯ºóÓÉÍâ²ãËõ·Å£¬
+       ±ÜÃâÕûÆÁ stage µÄ¾ÓÖĞ transform ÈÃÎÄ×Ö±»²Ã³ö»­²¼¡£ */
+    const full = doc.documentElement || doc.body;
+    const h = Math.max(full.scrollHeight || 0, vh);
+    out = await html2canvas(full, Object.assign({}, base, {
+      scale: Math.min(scale, Math.max(0.4, 1280 / vw)),
+      width: vw, height: h, x: 0, y: 0, scrollX: 0, scrollY: 0,
+    }));
+  } else {
+    out = await html2canvas(target, Object.assign({}, base, {
+      scale, width: vw, height: vh, x: 0, y: sy, scrollX: 0, scrollY: sy,
+    }));
+  }
+  /* ²¹»­ canvas / video£ºÏÈÈÃÒ³ÃæÖØ»æÒ»´Î£¬È·±£ÄÜ¶Áµ½ WebGL µÄÕæÊµÏñËØ */
   try {
     if (typeof repaint === 'function') await repaint();
     else await repaintOnce(doc.defaultView || window);
     const ctx = out.getContext('2d');
-    const n = paintLiveLayers(doc, ctx, { scale, vw, vh });
-    if (n) console.debug('[live-layer] è¡¥ç»˜', n, 'ä¸ªå®æ—¶å…ƒç´ ');
+    const outScale = out.width / Math.max(1, vw);
+    const cssH = opts.fullDoc ? out.height / outScale : vh;
+    const n = paintLiveLayers(doc, ctx, { scale: outScale, vw, vh: cssH, skip: bakedCanvases });
+    if (n) console.debug('[live-layer] ²¹»æ', n, '¸öÊµÊ±ÔªËØ');
   } catch (e) {
-    console.warn('[live-layer] è¡¥ç»˜å¤±è´¥', e && e.message);
+    console.warn('[live-layer] ²¹»æÊ§°Ü', e && e.message);
   }
   return out;
 }
 
-/* ---------- æ´»å±‚è¡¥ç»˜ï¼šä¿®å¤ html2canvas æ— æ³•æ¸²æŸ“ canvas / WebGL / video é€ æˆçš„é»‘å— ----------
- * html2canvas æ …æ ¼åŒ–æ—¶ï¼Œcanvasã€video è¿™ç±»â€œå®æ—¶åƒç´ æºâ€åªèƒ½æ‹¿åˆ°ç©ºç™½ï¼ˆå°¤å…¶ WebGL ç”»é¢ï¼‰ï¼Œ
- * ç»“æœæ˜¯é¡µé¢å…¶å®ƒéƒ¨åˆ†æ­£å¸¸ã€å”¯ç‹¬åŠ¨ç”»/æ¸¸æˆç”»é¢ä¸€ç‰‡é»‘ã€‚è¿™é‡Œåœ¨æˆªå›¾å®Œæˆåï¼ŒæŠŠçœŸå®å…ƒç´ çš„
- * å½“å‰åƒç´ æŒ‰å…¶åœ¨é¡µé¢ä¸­çš„ä½ç½®ã€å°ºå¯¸ã€å æ”¾å±‚çº§è¡¥ç”»åˆ°å¸§ä¸Šã€‚ */
+/* ---------- »î²ã²¹»æ£ºĞŞ¸´ html2canvas ÎŞ·¨äÖÈ¾ canvas / WebGL / video Ôì³ÉµÄºÚ¿é ----------
+ * html2canvas Õ¤¸ñ»¯Ê±£¬canvas¡¢video ÕâÀà¡°ÊµÊ±ÏñËØÔ´¡±Ö»ÄÜÄÃµ½¿Õ°×£¨ÓÈÆä WebGL »­Ãæ£©£¬
+ * ½á¹ûÊÇÒ³ÃæÆäËü²¿·ÖÕı³£¡¢Î¨¶À¶¯»­/ÓÎÏ·»­ÃæÒ»Æ¬ºÚ¡£ÕâÀïÔÚ½ØÍ¼Íê³Éºó£¬°ÑÕæÊµÔªËØµÄ
+ * µ±Ç°ÏñËØ°´ÆäÔÚÒ³ÃæÖĞµÄÎ»ÖÃ¡¢³ß´ç¡¢µş·Å²ã¼¶²¹»­µ½Ö¡ÉÏ¡£ */
 function listLiveLayers(doc, vw, vh, extraOffset) {
   const win = doc.defaultView || window;
   const layers = [];
@@ -328,7 +635,7 @@ function listLiveLayers(doc, vw, vh, extraOffset) {
     if (kind === 'video' && el.readyState < 2) return;
     const r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return;
-    /* è§†å£å¤–è·³è¿‡ï¼ˆæ•´é¡µæ¨¡å¼ä¸‹ vh ä¼ æ•´é¡µé«˜åº¦ï¼Œåæ ‡ç³»æ¢æˆæ–‡æ¡£åæ ‡ï¼‰ */
+    /* ÊÓ¿ÚÍâÌø¹ı£¨ÕûÒ³Ä£Ê½ÏÂ vh ´«ÕûÒ³¸ß¶È£¬×ø±êÏµ»»³ÉÎÄµµ×ø±ê£© */
     if (r.bottom + extraOffset < 0 || r.top + extraOffset > vh || r.right < 0 || r.left > vw) return;
     const zi = parseInt(cs.zIndex, 10);
     layers.push({
@@ -342,15 +649,16 @@ function listLiveLayers(doc, vw, vh, extraOffset) {
   doc.querySelectorAll('canvas').forEach((el) => push(el, 'canvas'));
   doc.querySelectorAll('video').forEach((el) => push(el, 'video'));
 
-  /* å…ˆæŒ‰ z-indexï¼Œå†æŒ‰ DOM é¡ºåºï¼Œè¿‘ä¼¼çœŸå®å æ”¾ */
+  /* ÏÈ°´ z-index£¬ÔÙ°´ DOM Ë³Ğò£¬½üËÆÕæÊµµş·Å */
   layers.sort((a, b) => (a.z - b.z) || (a.order - b.order));
   return layers;
 }
 
 function paintLiveLayers(doc, ctx, opt) {
-  const { scale = 1, vw, vh, extraOffset = 0 } = opt;
+  const { scale = 1, vw, vh, extraOffset = 0, skip = null } = opt;
   let painted = 0;
   for (const l of listLiveLayers(doc, vw, vh, extraOffset)) {
+    if (skip && skip.has(l.el)) continue;   // ÒÑÔÚ¿ËÂ¡Àïºæ±º¹ı£¬ÔÙ¸ÇÒ»´Î»áÕÚ×¡ÉÏ²ãÎÄ×Ö
     const dx = l.x * scale;
     const dy = l.y * scale;
     const dw = l.w * scale;
@@ -374,15 +682,15 @@ function paintLiveLayers(doc, ctx, opt) {
       ctx.restore();
       painted++;
     } catch (e) {
-      /* è·¨åŸŸæ±¡æŸ“æˆ–å…ƒç´ å·²å¤±æ•ˆæ—¶è·³è¿‡ï¼Œä¸é˜»å¡æ•´å¸§ */
+      /* ¿çÓòÎÛÈ¾»òÔªËØÒÑÊ§Ğ§Ê±Ìø¹ı£¬²»×èÈûÕûÖ¡ */
       console.warn('[live-layer]', l.kind, e && e.message);
     }
   }
   return painted;
 }
 
-/* è®©é¡µé¢é‡æ–°ç»˜åˆ¶ä¸€æ¬¡åå†è¯»å–åƒç´  â€”â€” WebGL æœªå¼€å¯ preserveDrawingBuffer æ—¶ï¼Œ
- * åªæœ‰åœ¨ç»˜åˆ¶åçš„åŒä¸€ä»»åŠ¡å†… drawImage æ‰èƒ½æ‹¿åˆ°çœŸå®ç”»é¢ï¼Œå¦åˆ™æ˜¯ä¸€ç‰‡ç©ºç™½ã€‚ */
+/* ÈÃÒ³ÃæÖØĞÂ»æÖÆÒ»´ÎºóÔÙ¶ÁÈ¡ÏñËØ ¡ª¡ª WebGL Î´¿ªÆô preserveDrawingBuffer Ê±£¬
+ * Ö»ÓĞÔÚ»æÖÆºóµÄÍ¬Ò»ÈÎÎñÄÚ drawImage ²ÅÄÜÄÃµ½ÕæÊµ»­Ãæ£¬·ñÔòÊÇÒ»Æ¬¿Õ°×¡£ */
 function repaintOnce(win) {
   return new Promise((resolve) => {
     let done = false;
@@ -397,13 +705,13 @@ function repaintOnce(win) {
 function canvasToJpegBlob(canvas, q) {
   return new Promise((resolve, reject) => {
     try {
-      canvas.toBlob(b => b ? resolve(b) : reject(new Error('å¸§ç¼–ç å¤±è´¥')), 'image/jpeg', q);
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('Ö¡±àÂëÊ§°Ü')), 'image/jpeg', q);
     } catch (e) { reject(e); }
   });
 }
 
-/* è™šæ‹Ÿæ—¶é’Ÿï¼šæ¥ç®¡ iframe å†…çš„ rAF / æ—¶é—´æºï¼Œè®© JS åŠ¨ç”»éšâ€œå¸§åºå·â€æ¨è¿›è€ŒéçœŸå®æ—¶é—´ï¼Œ
-   è¿™æ ·å³ä½¿ä¸€å¸§è¦æ¸²æŸ“å‡ ç™¾æ¯«ç§’ï¼Œè¾“å‡ºè§†é¢‘çš„åŠ¨ç”»èŠ‚å¥ä¹Ÿæ˜¯å‡†çš„ã€ä¸ä¸¢å¸§ã€‚ */
+/* ĞéÄâÊ±ÖÓ£º½Ó¹Ü iframe ÄÚµÄ rAF / Ê±¼äÔ´£¬ÈÃ JS ¶¯»­Ëæ¡°Ö¡ĞòºÅ¡±ÍÆ½ø¶ø·ÇÕæÊµÊ±¼ä£¬
+   ÕâÑù¼´Ê¹Ò»Ö¡ÒªäÖÈ¾¼¸°ÙºÁÃë£¬Êä³öÊÓÆµµÄ¶¯»­½Ú×àÒ²ÊÇ×¼µÄ¡¢²»¶ªÖ¡¡£ */
 function installVirtualClock(win) {
   const q = new Map();
   let nid = 0;
@@ -431,7 +739,58 @@ function installVirtualClock(win) {
   };
 }
 
-/* é€å¸§æ¸²æŸ“ â†’ ffmpeg å›¾ç‰‡åºåˆ—ç¼–ç ï¼Œå¸§ç‡æ’å®šï¼Œä¸æ¸²æŸ“è€—æ—¶è§£è€¦ */
+/* ±ßäÖÈ¾±ßÂäÅÌµÄÖ¡ĞòÁĞ±àÂëÆ÷£ºÖ¡Ğ´½ø ffmpeg ĞéÄâÎÄ¼şÏµÍ³£¬²»ÔÚ JS ÄÚ´æÀï¶Ú¡£
+ * ÕâÑù³¤ÊÓÆµ²»»á±»ÄÚ´æ³Å±¬¡¢Ò²²»»á±»Ö¡ÊıÉÏÏŞÇÄÇÄ½Ø¶Ï¡£ */
+async function openSeqEncoder(fps) {
+  const ffmpeg = await getFFmpeg();
+  const pad = (n) => String(n).padStart(5, '0');
+  let count = 0;
+  return {
+    get count() { return count; },
+    async write(canvas) {
+      const blob = await canvasToJpegBlob(canvas, 0.92);
+      const buf = new Uint8Array(await blob.arrayBuffer());
+      await ffmpeg.writeFile('mc' + pad(count) + '.jpg', buf);
+      count++;
+    },
+    async finish(onProgress) {
+      if (!count) throw new Error('Ã»ÓĞ¿É±àÂëµÄÖ¡');
+      await ffmpeg.exec([
+        '-y', '-framerate', String(fps), '-i', 'mc%05d.jpg',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20',
+        '-pix_fmt', 'yuv420p', '-r', String(fps), '-movflags', '+faststart', 'mc_out.mp4',
+      ]);
+      onProgress && onProgress(0.9);
+      const data = await ffmpeg.readFile('mc_out.mp4');
+      for (let i = 0; i < count; i++) { try { await ffmpeg.deleteFile('mc' + pad(i) + '.jpg'); } catch (e) {} }
+      try { await ffmpeg.deleteFile('mc_out.mp4'); } catch (e) {}
+      onProgress && onProgress(1);
+      return new Blob([data.buffer], { type: 'video/mp4' });
+    },
+  };
+}
+
+/* ³ÉÆ¬±³¾°É«£ºÒ³Ãæ×ÔÉíÃ»ÓĞ²»Í¸Ã÷µ×É«Ê±£¨³£¼ûÓÚÀàÊÓÆµÒ³Ãæ body Í¸Ã÷£©£¬
+ * ÓÃºÚÉ«»á°ÑÉîÉ«ÎÄ×Ö³¹µ×³Ôµô ¡ª¡ª ÕâÕıÊÇ¡°ÎÄ×Ö¿´²»¼û¡±µÄÁíÒ»¸öÔ­Òò¡£
+ * ÕâÀï¶Á body/html µÄÕæÊµ±³¾°É«£¬Í¸Ã÷ÔòÍË»Ø°×£¬²¢±£Ö¤Ç°¾°ÎÄ×ÖÓĞ¶Ô±È¶È¡£ */
+function resolveFrameBg(doc, win) {
+  const parse = (v) => {
+    const m = /rgba?\(([^)]+)\)/.exec(v || '');
+    if (!m) return null;
+    const p = m[1].split(',').map(s => parseFloat(s.trim()));
+    return { r: p[0] || 0, g: p[1] || 0, b: p[2] || 0, a: p.length > 3 ? (isNaN(p[3]) ? 1 : p[3]) : 1 };
+  };
+  try {
+    for (const el of [doc.body, doc.documentElement]) {
+      if (!el) continue;
+      const c = parse(win.getComputedStyle(el).backgroundColor);
+      if (c && c.a >= 0.9) return `rgb(${c.r},${c.g},${c.b})`;
+    }
+  } catch (e) {}
+  return '#ffffff';
+}
+
+/* ÖğÖ¡äÖÈ¾ ¡ú ffmpeg Í¼Æ¬ĞòÁĞ±àÂë£¬Ö¡ÂÊºã¶¨£¬ÓëäÖÈ¾ºÄÊ±½âñî */
 async function encodeFramesToMp4(frames, fps, onProgress) {
   const ffmpeg = await getFFmpeg();
   const pad = (n) => String(n).padStart(5, '0');
@@ -450,13 +809,13 @@ async function encodeFramesToMp4(frames, fps, onProgress) {
   return new Blob([data.buffer], { type: 'video/mp4' });
 }
 
-/* å…¼å®¹æ€§é¢„æ£€ï¼šæŠŠé€å¸§å¼•æ“æŠ“ä¸åˆ°çš„å†…å®¹æå‰å‘Šè¯‰ç”¨æˆ· */
+/* ¼æÈİĞÔÔ¤¼ì£º°ÑÖğÖ¡ÒıÇæ×¥²»µ½µÄÄÚÈİÌáÇ°¸æËßÓÃ»§ */
 function scanCompat(doc) {
   const issues = [];
   const vids = doc.querySelectorAll('video').length;
-  if (vids) issues.push(`<video> Ã— ${vids}ï¼ˆhtml2canvas ç”»ä¸å‡ºè§†é¢‘ç”»é¢ï¼‰`);
+  if (vids) issues.push(`<video> ¡Á ${vids}£¨html2canvas »­²»³öÊÓÆµ»­Ãæ£©`);
   const ifrs = doc.querySelectorAll('iframe').length;
-  if (ifrs) issues.push(`<iframe> Ã— ${ifrs}ï¼ˆå­æ–‡æ¡£å†…å®¹ä¸ä¼šè¢«æˆªå–ï¼‰`);
+  if (ifrs) issues.push(`<iframe> ¡Á ${ifrs}£¨×ÓÎÄµµÄÚÈİ²»»á±»½ØÈ¡£©`);
   let ximg = 0;
   doc.querySelectorAll('img').forEach(img => {
     try {
@@ -464,7 +823,7 @@ function scanCompat(doc) {
       if (u.protocol.startsWith('http') && u.origin !== location.origin && !img.crossOrigin) ximg++;
     } catch (e) {}
   });
-  if (ximg) issues.push(`è·¨åŸŸå›¾ç‰‡ Ã— ${ximg}ï¼ˆç¼º CORS ä¼šç©ºç™½ï¼‰`);
+  if (ximg) issues.push(`¿çÓòÍ¼Æ¬ ¡Á ${ximg}£¨È± CORS »á¿Õ°×£©`);
   return issues;
 }
 
@@ -474,8 +833,8 @@ function mimeSupported(list) {
 }
 
 function makeRecorder(stream, bitrate) {
-  // ç»Ÿä¸€ç”¨ WebM å½•åˆ¶ï¼šå„æµè§ˆå™¨å®ç°ç¨³å®šã€æ—¶é•¿å‡†ç¡®ï¼›
-  // éœ€è¦ MP4 æ—¶ç”± ffmpeg.wasm åœ¨æœ¬æœºè½¬ç ï¼ˆä¸ä¸Šä¼ äº‘ç«¯ï¼‰ã€‚é¿å… mp4 ç›´å½•åœ¨éƒ¨åˆ†ç¯å¢ƒé™é»˜ 0 å¸§çš„é—®é¢˜ã€‚
+  // Í³Ò»ÓÃ WebM Â¼ÖÆ£º¸÷ä¯ÀÀÆ÷ÊµÏÖÎÈ¶¨¡¢Ê±³¤×¼È·£»
+  // ĞèÒª MP4 Ê±ÓÉ ffmpeg.wasm ÔÚ±¾»ú×ªÂë£¨²»ÉÏ´«ÔÆ¶Ë£©¡£±ÜÃâ mp4 Ö±Â¼ÔÚ²¿·Ö»·¾³¾²Ä¬ 0 Ö¡µÄÎÊÌâ¡£
   const mime = mimeSupported(['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']);
   const chunks = [];
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: bitrate || 6_000_000 } : undefined);
@@ -491,10 +850,10 @@ function makeRecorder(stream, bitrate) {
   return rec;
 }
 
-/* ä¸‰ç§å½•åˆ¶å™¨ */
-/* é‡‡æ · canvas ç¼©ç•¥å›¾ï¼šåˆ¤æ–­æ˜¯å¦ç©ºç™½ / æ˜¯å¦å®Œå…¨æ²¡å˜åŒ–ã€‚
- * å¾ˆå¤šæ¸¸æˆä¸åŠ¨ç”»é¡µä¼šå…ˆç›–ä¸€å±‚â€œç‚¹å‡»å¼€å§‹â€çš„é®ç½©ï¼Œcanvas åœ¨ç‚¹å‡»å‰ä¸€ç›´æ˜¯ç©ºçš„ï¼Œ
- * ç›´æ¥å½•å°±ä¼šå¾—åˆ° 0 å­—èŠ‚æˆ–çº¯é»‘æˆç‰‡ï¼Œè¿™é‡Œæå‰è¯†åˆ«å¹¶ç»™å‡ºå¯æ“ä½œçš„å»ºè®®ã€‚ */
+/* ÈıÖÖÂ¼ÖÆÆ÷ */
+/* ²ÉÑù canvas ËõÂÔÍ¼£ºÅĞ¶ÏÊÇ·ñ¿Õ°× / ÊÇ·ñÍêÈ«Ã»±ä»¯¡£
+ * ºÜ¶àÓÎÏ·Óë¶¯»­Ò³»áÏÈ¸ÇÒ»²ã¡°µã»÷¿ªÊ¼¡±µÄÕÚÕÖ£¬canvas ÔÚµã»÷Ç°Ò»Ö±ÊÇ¿ÕµÄ£¬
+ * Ö±½ÓÂ¼¾Í»áµÃµ½ 0 ×Ö½Ú»ò´¿ºÚ³ÉÆ¬£¬ÕâÀïÌáÇ°Ê¶±ğ²¢¸ø³ö¿É²Ù×÷µÄ½¨Òé¡£ */
 function canvasHealth(canvas) {
   try {
     const s = 32;
@@ -512,7 +871,7 @@ function canvasHealth(canvas) {
   } catch (e) { return null; }
 }
 
-/* æ‰¾ä¸€ä¸ªé“ºæ»¡è§†å£çš„â€œå¼€å§‹/ç‚¹å‡»è¿›å…¥â€é®ç½©å±‚ï¼Œè¿”å›å¯å¡«è¿›ã€Œæ’­æ”¾å¯åŠ¨åŠ¨ä½œã€çš„é€‰æ‹©å™¨ */
+/* ÕÒÒ»¸öÆÌÂúÊÓ¿ÚµÄ¡°¿ªÊ¼/µã»÷½øÈë¡±ÕÚÕÖ²ã£¬·µ»Ø¿ÉÌî½ø¡¸²¥·ÅÆô¶¯¶¯×÷¡¹µÄÑ¡ÔñÆ÷ */
 function findStartOverlay(win, doc, vw, vh) {
   try {
     const area = Math.max(1, vw * vh);
@@ -524,6 +883,13 @@ function findStartOverlay(win, doc, vw, vh) {
       const cs = win.getComputedStyle(el);
       if (cs.position !== 'fixed' && cs.position !== 'absolute') continue;
       if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) continue;
+      /* ÄÚÈİÈİÆ÷²»ÊÇ¡°¿ªÊ¼¡±ÕÚÕÖ£ºÀïÃæ°ü×Å canvas/video/iframe£¬»òÎÄ°¸ºÜ³¤Ê±£¬
+         µ±ÕÚÕÖÈ¥µãËü¿ÉÄÜ´¥·¢Ìø×ª¡¢ÉõÖÁÖ±½Ó´ò¶Ï²¥·Å£¬ÎóÅĞ´ú¼ÛºÜ´ó¡£ */
+      if (el.querySelector('canvas,video,iframe')) continue;
+      const txt = (el.textContent || '').trim();
+      if (txt.length > 60) continue;
+      /* ÎÄ°¸²»Ïñ¡°¿ªÊ¼/²¥·Å¡±ÌáÊ¾µÄÕûÆÁ¸¡²ã£¬¶à°ëÖ»ÊÇÄÚÈİ²ã£¨±êÌâ¡¢×ÖÄ»£©£¬±ğµ±ÕÚÕÖµã */
+      if (txt && !/(¿ªÊ¼|²¥·Å|µã»÷|µ¥»÷|½øÈë|Æô¶¯|¼ÌĞø|start|play|click|tap|enter)/i.test(txt)) continue;
       let sel = '';
       if (el.id) sel = '#' + el.id;
       else if (el.className && typeof el.className === 'string') sel = '.' + el.className.trim().split(/\s+/)[0];
@@ -533,28 +899,76 @@ function findStartOverlay(win, doc, vw, vh) {
   return null;
 }
 
-async function startLiveCanvas(fps, onFrame) {
-  const canvas = pickCanvas();
-  if (!canvas) throw new Error('æœªæ‰¾åˆ°è¶³å¤Ÿå¤§çš„ canvasï¼Œè¯·æ”¹ç”¨â€œæ»šåŠ¨â€æ¨¡å¼æˆ–â€œé€å¸§â€æ¨¡å¼');
-  state.stream = canvas.captureStream(fps);
-  state.recorder = makeRecorder(state.stream);
+async function startLiveCanvas(fps, opts = {}) {
+  const canvas = pickCanvas(0.12);
+  if (!canvas) throw new Error('Î´ÕÒµ½×ã¹»´óµÄ canvas£¬Çë¸ÄÓÃ¡°¹ö¶¯¡±Ä£Ê½»ò¡°ÖğÖ¡¡±Ä£Ê½');
+  await prepareOutputCanvas();
+
+  /* ²»ÔÙÖ±½Ó captureStream Ö»Â¼ canvas ¡ª¡ª ÄÇÑùÒ³ÃæÉÏµÄÎÄ×Ö/HUD/ËµÃ÷È«¶ª£¬
+     ÕıÊÇ¡°ÀàÊÓÆµÒ³ÃæÎÄ×ÖÏÔÊ¾²»³öÀ´¡±µÄ¸ùÒòÖ®Ò»¡£
+     ¸ÄÎª£ºDOM Õ¤¸ñ»¯£¨º¬ÎÄ×Ö£© + canvas ÕæÊµÏñËØ²¹»æ ¡ú ºÏ³Éµ½Êä³ö»­²¼ ¡ú ²É¼¯Êä³ö»­²¼¡£ */
+  const doc = frame.doc, win = frame.win;
+  const vw = frame.W, vh = frame.H;
+  const targets = collectBakeTargets(doc);
+  const scale = Math.min(1, 1600 / vw);
+  const durMode = opts.durMode || 'fixed';
+  const fixedSec = opts.fixedSec || 0;
+  const stopJs = opts.stopJs || '';
+  const stopScroll = false;
+
+  state.stream = frame.outCanvas.captureStream(fps);
   attachPreview(state.stream);
+  await attachAudioToStream(state.stream);
+  state.recorder = makeRecorder(state.stream);
+  if (state.micStream) startAudioMeter();
 
-  /* 1.5s åå›çœ‹ canvas æ˜¯å¦è¿˜ç©ºç€ / ä¸€åŠ¨ä¸åŠ¨ */
   const h0 = canvasHealth(canvas);
-  setTimeout(() => {
-    if (!state.recording) return;
-    const h1 = canvasHealth(canvas);
-    if (!h1) return;
-    if (h1.blank || (h0 && h1.sig === h0.sig)) {
-      state.canvasWarn = state.canvasWarn
-        || 'canvas ç”»é¢ä¸€ç›´æ˜¯ç©ºç™½/é™æ­¢ï¼šé¡µé¢å¾ˆå¯èƒ½åœåœ¨â€œç‚¹å‡»å¼€å§‹â€çš„é®ç½©åé¢ã€‚'
-        + 'è¯·åœ¨ã€Œæ’­æ”¾å¯åŠ¨åŠ¨ä½œã€é‡Œå¡«é®ç½©çš„é€‰æ‹©å™¨åé‡å½•ï¼Œæˆ–æ”¹ç”¨ã€Œæ¼”ç¤ºå½•åˆ¶ã€è‡ªå·±ç‚¹å¼€åå½•ã€‚';
-      setStatus('âš  ' + state.canvasWarn, 'warn');
-    }
-  }, 1500);
+  const t0 = performance.now();
+  let i = 0, lastWarn = 0;
 
-  return () => { /* canvas æ¨¡å¼ç”±æ—¶é—´/æ‰‹åŠ¨/è¡¨è¾¾å¼æ§åˆ¶ */ };
+  const loop = async () => {
+    if (!state.recording) return;
+    const started = performance.now();
+    try {
+      const shot = await renderFrameCanvas(doc, vw, vh, scale, targets, win.scrollY || 0, null, { bg: resolveFrameBg(doc, win), textSafe: true });
+      frame.outCtx.fillStyle = resolveFrameBg(doc, win);
+      frame.outCtx.fillRect(0, 0, vw, vh);
+      frame.outCtx.drawImage(shot, 0, 0, vw, vh);
+      i++;
+      if (i === 45) {
+        const h1 = canvasHealth(canvas);
+        if (h1 && (h1.blank || (h0 && h1.sig === h0.sig))) {
+          state.canvasWarn = state.canvasWarn
+            || 'canvas »­ÃæÒ»Ö±ÊÇ¿Õ°×/¾²Ö¹£ºÒ³ÃæºÜ¿ÉÄÜÍ£ÔÚ¡°µã»÷¿ªÊ¼¡±µÄÕÚÕÖºóÃæ¡£'
+            + 'ÇëÔÚ¡¸²¥·ÅÆô¶¯¶¯×÷¡¹ÀïÌîÕÚÕÖµÄÑ¡ÔñÆ÷ºóÖØÂ¼£¬»ò¸ÄÓÃ¡¸ÑİÊ¾Â¼ÖÆ¡¹×Ô¼ºµã¿ªºóÂ¼¡£';
+          setStatus('?? ' + state.canvasWarn, 'warn');
+        }
+      }
+      if (stopJs && i % 10 === 0) {
+        try {
+          const done = await evaluate(`(function(){ try { return !!(${stopJs}); } catch(e){ return false; } })()`);
+          if (done) { stopRecording(); return; }
+        } catch (e) {}
+      }
+      if (durMode === 'fixed' && fixedSec > 0) {
+        const el = (performance.now() - t0) / 1000;
+        setProgress(Math.min(0.99, el / fixedSec), `Â¼ÖÆÖĞ ${el.toFixed(1)}/${fixedSec}s`);
+        if (el >= fixedSec) { stopRecording(); return; }
+      } else if (performance.now() - lastWarn > 1000) {
+        setStatus(`Â¼ÖÆÖĞ ${((performance.now() - t0) / 1000).toFixed(0)}s£¨µã¡°Í£Ö¹¡±½áÊø£©`);
+        lastWarn = performance.now();
+      }
+    } catch (err) {
+      stopRecording();
+      setStatus('ÖğÖ¡äÖÈ¾´íÎó: ' + err.message, 'err');
+      console.error('[canvas-compose]', err);
+      return;
+    }
+    const cost = performance.now() - started;
+    setTimeout(loop, Math.max(8, 1000 / fps - cost));
+  };
+  loop();
+  return () => {};
 }
 
 async function startDomFrame(fps, mode, opts = {}) {
@@ -570,83 +984,95 @@ async function startDomFrame(fps, mode, opts = {}) {
   const stopScroll = mode === 'scroll';
   const timed = stopScroll && opts.durMode === 'fixed' && opts.fixedSec > 0;
   const fixedSec = opts.fixedSec || 0;
+  const frameBg = resolveFrameBg(doc, win);
   const t0 = performance.now();
   let step = 0;
 
-  /* æ»šåŠ¨æ¨¡å¼ï¼šæ•´é¡µå…ˆå¿«ç…§æˆä¸€å¼ å¤§å›¾ï¼Œå†æŒ‰æ—¶é—´è½´åˆ‡è§†å£ â€”â€” ä½ç½®ç²¾ç¡®ã€å¸§ç‡ç¨³å®š */
+  /* ¹ö¶¯Ä£Ê½£ºÕûÒ³ÏÈ¿ìÕÕ³ÉÒ»ÕÅ´óÍ¼£¬ÔÙ°´Ê±¼äÖáÇĞÊÓ¿Ú ¡ª¡ª Î»ÖÃ¾«È·¡¢Ö¡ÂÊÎÈ¶¨ */
   if (stopScroll) {
     const shot = await snapshotFullPage(win, doc, vw);
     const logicalH = shot.logicalH;
-    const k = shot.canvas.height / logicalH;   // å¿«ç…§ç¼©æ”¾æ¯”
+    const k = shot.canvas.height / logicalH;   // ¿ìÕÕËõ·Å±È
     const maxScroll = Math.max(0, logicalH - vh);
     const pxPerSec = opts.scrollSpeed || 150;
     const scrollDur = timed ? fixedSec : Math.max(2, maxScroll / pxPerSec);
     const visH = Math.min(shot.canvas.height, Math.round(vh * k));
+    let next = performance.now();
     const loop = () => {
       if (!state.recording) return;
       const p = Math.min(1, (performance.now() - t0) / 1000 / scrollDur);
       const srcY = Math.min(shot.canvas.height - visH, Math.round(maxScroll * p * k));
-      frame.outCtx.fillStyle = '#000';
+      frame.outCtx.fillStyle = frameBg;
       frame.outCtx.fillRect(0, 0, vw, vh);
       frame.outCtx.drawImage(shot.canvas, 0, srcY, shot.canvas.width, visH, 0, 0, vw, vh);
       step++;
       if (opts.onFrame) opts.onFrame(step);
+      if (durMode === 'fixed' && fixedSec > 0) {
+        setProgress(Math.min(0.99, (performance.now() - t0) / 1000 / fixedSec));
+      }
       if (p >= 1) { stopRecording(); return; }
-      setTimeout(loop, 1000 / fpsInt);
+      /* °´¡°Ä¿±êÊ±¿Ì¡±ÅÅÏÂÒ»Ö¡£¬¶ø²»ÊÇ¹Ì¶¨µÈ´ı 1/fps£º
+         ·ñÔòÃ¿Ö¡äÖÈ¾ºÄÊ±»á±»ÀÛ¼Ó³ÉÆ¯ÒÆ£¬³ÉÆ¬Ê±³¤±ÈÉè¶¨Öµ³¤¡£ */
+      next += 1000 / fpsInt;
+      const wait = Math.max(0, next - performance.now());
+      if (wait === 0) next = performance.now();
+      setTimeout(loop, wait);
     };
     loop();
     return () => {};
   }
 
-  /* åŠ¨ç”» / DOM é€å¸§ï¼šæ¯å¸§é‡æ–°æˆªå–å½“å‰è§†å£ï¼ˆå¸¦åŠ¨ç”»çŠ¶æ€çƒ˜ç„™ï¼Œé¿å…å…‹éš†æ–‡æ¡£é‡æ”¾åŠ¨ç”»ï¼‰ */
+  /* ¶¯»­ / DOM ÖğÖ¡£ºÃ¿Ö¡ÖØĞÂ½ØÈ¡µ±Ç°ÊÓ¿Ú£¨´ø¶¯»­×´Ì¬ºæ±º£¬±ÜÃâ¿ËÂ¡ÎÄµµÖØ·Å¶¯»­£© */
   const targets = collectBakeTargets(doc);
   const scale = Math.min(1, 1600 / vw);
   const loop = async () => {
     if (!state.recording) return;
     const started = performance.now();
     try {
-      /* ä¸ä¼  repaintï¼šèµ°é»˜è®¤ repaintOnce è®©é¡µé¢çœŸå®é‡ç»˜ä¸€å¸§ï¼Œå†è¡¥ç»˜ canvas / video åƒç´  */
-      const canvas = await renderFrameCanvas(doc, vw, vh, scale, targets);
-      frame.outCtx.fillStyle = '#000';
+      /* ²»´« repaint£º×ßÄ¬ÈÏ repaintOnce ÈÃÒ³ÃæÕæÊµÖØ»æÒ»Ö¡£¬ÔÙ²¹»æ canvas / video ÏñËØ */
+      const canvas = await renderFrameCanvas(doc, vw, vh, scale, targets, win.scrollY || 0, null, { bg: frameBg, textSafe: true });
+      frame.outCtx.fillStyle = frameBg;
       frame.outCtx.fillRect(0, 0, vw, vh);
       frame.outCtx.drawImage(canvas, 0, 0, vw, vh);
       if (opts.onFrame) opts.onFrame(step);
       step++;
     } catch (err) {
       stopRecording();
-      setStatus('é€å¸§æ¸²æŸ“é”™è¯¯: ' + err.message, 'err');
+      setStatus('ÖğÖ¡äÖÈ¾´íÎó: ' + err.message, 'err');
       console.error('[frame render]', err);
       return;
     }
     const cost = performance.now() - started;
-    setTimeout(loop, Math.max(10, 1000 / fpsInt - cost));
+    nextAt += 1000 / fpsInt;
+    setTimeout(loop, Math.max(0, nextAt - performance.now()));
   };
+  let nextAt = performance.now();
   loop();
   return () => {};
 }
 
-/* ---------- ç²¾ç¡®é€å¸§å¼•æ“ ----------
- * ä¸å®æ—¶å½•åˆ¶çš„åŒºåˆ«ï¼š
- * 1) ç”¨è™šæ‹Ÿæ—¶é’Ÿæ§åˆ¶ CSS åŠ¨ç”» / rAF åŠ¨ç”»ï¼ŒæŒ‰â€œå¸§åºå·â€æ¨è¿›ï¼Œä¸ä¾èµ–æ¸²æŸ“é€Ÿåº¦ï¼›
- * 2) æ¯å¸§çƒ˜ç„™åŠ¨ç”»çŠ¶æ€åå†æˆªå›¾ï¼Œå…‹éš†æ–‡æ¡£ä¸ä¼šä»å¤´é‡æ”¾ï¼›
- * 3) å…ˆå­˜å¸§ï¼Œæœ€åç”¨ ffmpeg æŒ‰å›ºå®šå¸§ç‡åˆæˆ â€”â€” å¸§ç‡æ’å®šã€æ—¶é•¿ç²¾ç¡®ã€ä¸ä¸¢å¸§ã€‚ */
+/* ---------- ¾«È·ÖğÖ¡ÒıÇæ ----------
+ * ÓëÊµÊ±Â¼ÖÆµÄÇø±ğ£º
+ * 1) ÓÃĞéÄâÊ±ÖÓ¿ØÖÆ CSS ¶¯»­ / rAF ¶¯»­£¬°´¡°Ö¡ĞòºÅ¡±ÍÆ½ø£¬²»ÒÀÀµäÖÈ¾ËÙ¶È£»
+ * 2) Ã¿Ö¡ºæ±º¶¯»­×´Ì¬ºóÔÙ½ØÍ¼£¬¿ËÂ¡ÎÄµµ²»»á´ÓÍ·ÖØ·Å£»
+ * 3) ÏÈ´æÖ¡£¬×îºóÓÃ ffmpeg °´¹Ì¶¨Ö¡ÂÊºÏ³É ¡ª¡ª Ö¡ÂÊºã¶¨¡¢Ê±³¤¾«È·¡¢²»¶ªÖ¡¡£ */
 async function startPrecise(fps, opts = {}) {
   const doc = frame.doc, win = frame.win;
-  if (!doc) throw new Error('é¡µé¢æœªåŠ è½½');
+  if (!doc) throw new Error('Ò³ÃæÎ´¼ÓÔØ');
   const vw = frame.W, vh = frame.H;
   await prepareOutputCanvas();
 
-  // é¢„è§ˆï¼šæŠŠæ¸²æŸ“å‡ºçš„å¸§æ¨åˆ°é¢„è§ˆåŒº
+  // Ô¤ÀÀ£º°ÑäÖÈ¾³öµÄÖ¡ÍÆµ½Ô¤ÀÀÇø
   try {
     state.previewStream = frame.outCanvas.captureStream(0);
     state.previewTrack = state.previewStream.getVideoTracks()[0];
     attachPreview(state.previewStream);
-  } catch (e) { /* é¢„è§ˆå¤±è´¥ä¸å½±å“å½•åˆ¶ */ }
+  } catch (e) { /* Ô¤ÀÀÊ§°Ü²»Ó°ÏìÂ¼ÖÆ */ }
 
   const { anims, map } = tagAnimatedTargets(doc);
   anims.forEach(a => { try { a.pause(); } catch (e) {} });
 
-  // è®¡ç®—æ€»å¸§æ•°
+  // ¼ÆËã×ÜÖ¡Êı
   let total = 0;
   const durMode = opts.durMode || 'auto';
   const doScroll = !!opts.scroll;
@@ -655,7 +1081,7 @@ async function startPrecise(fps, opts = {}) {
   if (durMode === 'fixed') {
     total = Math.max(1, Math.round((opts.fixedSec || 10) * fps));
   } else if (doScroll) {
-    // æ»šåŠ¨æ¨¡å¼ï¼šæŒ‰æ»šåŠ¨é€Ÿåº¦æŠŠæ•´é¡µèµ°å®Œï¼ˆæ‡’åŠ è½½/è§†å·®/æ»šåŠ¨è§¦å‘åŠ¨ç”»éƒ½ä¼šçœŸå®å‘ç”Ÿï¼‰
+    // ¹ö¶¯Ä£Ê½£º°´¹ö¶¯ËÙ¶È°ÑÕûÒ³×ßÍê£¨ÀÁ¼ÓÔØ/ÊÓ²î/¹ö¶¯´¥·¢¶¯»­¶¼»áÕæÊµ·¢Éú£©
     total = Math.max(1, Math.ceil(maxScroll / scrollSpeed * fps));
   } else if (durMode === 'auto' && !opts.stopJs) {
     let maxMs = 0;
@@ -667,17 +1093,23 @@ async function startPrecise(fps, opts = {}) {
     }
     total = Math.round(Math.max(4000, maxMs || 10000) / 1000 * fps);
   } else if (durMode === 'manual') {
-    total = 0;   // æ‰‹åŠ¨åœæ­¢
+    total = 0;   // ÊÖ¶¯Í£Ö¹
   }
 
-  const MAX_FRAMES = 1800;
+  const MAX_FRAMES = 10800;   // 6 ·ÖÖÓ @30fps£ºÖ¡²»ÔÙ×¤ÁôÄÚ´æ£¨ÖğÖ¡Ö±Ğ´ ffmpeg ĞéÄâÅÌ£©
   let capped = false;
   if (total > MAX_FRAMES) { total = MAX_FRAMES; capped = true; }
 
-  setStatus(`ç²¾ç¡®é€å¸§æ¸²æŸ“ä¸­ï¼š${total ? total + ' å¸§' : 'æ‰‹åŠ¨åœæ­¢'} @ ${fps}fpsâ€¦` + (doScroll ? 'ï¼ˆæ»šåŠ¨æ•´é¡µï¼‰' : ''));
+  const exact = total ? (total / fps) : 0;
+  setStatus(`¾«È·ÖğÖ¡äÖÈ¾ÖĞ£º${total ? total + ' Ö¡ / ' + exact.toFixed(2) + 's' : 'ÊÖ¶¯Í£Ö¹'} @ ${fps}fps¡­`
+    + (doScroll ? '£¨¹ö¶¯ÕûÒ³£©' : ''));
+  if (capped) setStatus(`Ä¿±êÊ±³¤³¬¹ıµ¥´ÎÉÏÏŞ ${(MAX_FRAMES / fps).toFixed(0)}s£¬½«°´¸ÃÉÏÏŞÂ¼ÖÆ£¨¿É½µµÍÖ¡ÂÊ»ò·Ö¶ÎÂ¼ÖÆ£©¡£`, 'warn');
+  /* ÀàÊÓÆµÒ³Ãæ£ºÕûÆÁ¾ÓÖĞÎèÌ¨ÔÚ¿ËÂ¡Àï»á´íÎ»£¬½øÈë¾²Ì¬¿ìÕÕÄ£Ê½ÔÙÖğÖ¡ÍÆ½ø */
+  const restoreCompat = enterStaticSnapshot(doc, win);
+  const frameBg = resolveFrameBg(doc, win);
   const clock = installVirtualClock(win);
   const scale = Math.min(1, 1600 / vw);
-  const frames = [];
+  const enc = await openSeqEncoder(fps);
   let i = 0;
 
   try {
@@ -689,7 +1121,7 @@ async function startPrecise(fps, opts = {}) {
       if (doScroll) {
         sy = Math.min(maxScroll, (i / fps) * scrollSpeed);
         try { win.scrollTo(0, sy); } catch (e) {}
-        await sleep(0);   // è®©æ»šåŠ¨è§¦å‘çš„ IntersectionObserver / æ‡’åŠ è½½æ‰§è¡Œ
+        await sleep(0);   // ÈÃ¹ö¶¯´¥·¢µÄ IntersectionObserver / ÀÁ¼ÓÔØÖ´ĞĞ
       }
 
       clock.tick(t);
@@ -701,23 +1133,24 @@ async function startPrecise(fps, opts = {}) {
       }
 
       const canvas = await renderFrameCanvas(doc, vw, vh, scale, map, sy, () => {
-        /* è™šæ‹Ÿæ—¶é’Ÿä¸‹åŒæ­¥é‡ç»˜ä¸€å¸§ï¼šé¡µé¢ rAF å›è°ƒæ‰§è¡Œå®Œç«‹å³è¡¥ç»˜ï¼Œèƒ½è¯»åˆ° WebGL çœŸå®åƒç´  */
+        /* ĞéÄâÊ±ÖÓÏÂÍ¬²½ÖØ»æÒ»Ö¡£ºÒ³Ãæ rAF »Øµ÷Ö´ĞĞÍêÁ¢¼´²¹»æ£¬ÄÜ¶Áµ½ WebGL ÕæÊµÏñËØ */
         clock.tick(t);
         for (const a of anims) { try { a.currentTime = t; } catch (e) {} }
-      });
-      frame.outCtx.fillStyle = '#000';
+      }, { bg: frameBg, textSafe: true });
+      frame.outCtx.fillStyle = frameBg;
       frame.outCtx.fillRect(0, 0, vw, vh);
       frame.outCtx.drawImage(canvas, 0, 0, vw, vh);
       if (state.previewTrack) { try { state.previewTrack.requestFrame(); } catch (e) {} }
 
-      const blob = await canvasToJpegBlob(frame.outCanvas, 0.9);
-      frames.push(new Uint8Array(await blob.arrayBuffer()));
+      /* Ö¡Ö±½ÓĞ´½ø ffmpeg ĞéÄâÅÌ£ºÄÚ´æÕ¼ÓÃÓëÊ±³¤ÎŞ¹Ø£¬³¤ÊÓÆµ²»ÔÙ±»½Ø¶Ï */
+      await enc.write(frame.outCanvas);
       i++;
 
-      if (total) setProgress(0.05 + 0.7 * (i / total), `æ¸²æŸ“ç¬¬ ${i}/${total} å¸§ï¼ˆ${((i / total) * 100).toFixed(0)}%ï¼‰`);
-      else setStatus(`æ¸²æŸ“ç¬¬ ${i} å¸§â€¦ï¼ˆç‚¹â€œåœæ­¢â€ç»“æŸï¼‰`);
+      if (total) setProgress(0.05 + 0.7 * (i / total), `äÖÈ¾µÚ ${i}/${total} Ö¡£¨${((i / total) * 100).toFixed(0)}%£©`);
+      else setStatus(`äÖÈ¾µÚ ${i} Ö¡¡­£¨µã¡°Í£Ö¹¡±½áÊø£©`);
 
-      if (opts.stopJs && i % 10 === 0) {
+      /* Í£Ö¹±í´ïÊ½Ã¿Ö¡¶¼ÅĞ£ºÒÔÇ°Ã¿ 10 Ö¡²ÅÅĞÒ»´Î£¬×î³¤»á¶àÂ¼ 10/fps Ãë */
+      if (opts.stopJs) {
         try {
           const done = await evaluate(`(function(){ try { return !!(${opts.stopJs}); } catch(e){ return false; } })()`);
           if (done) break;
@@ -727,22 +1160,24 @@ async function startPrecise(fps, opts = {}) {
     }
   } finally {
     clock.restore();
+    restoreCompat();
   }
 
-  if (!frames.length) throw new Error('æœªæ¸²æŸ“åˆ°ä»»ä½•å¸§ï¼ˆé¡µé¢å¯èƒ½ä¸ºç©ºï¼‰');
-  if (capped) setStatus(`å·²è¾¾å¸§æ•°ä¸Šé™ ${MAX_FRAMES}ï¼Œè§†é¢‘è¢«æˆªæ–­ã€‚è¯·é™ä½æ—¶é•¿æˆ–å¸§ç‡ã€‚`, 'warn');
+  if (!i) throw new Error('Î´äÖÈ¾µ½ÈÎºÎÖ¡£¨Ò³Ãæ¿ÉÄÜÎª¿Õ£©');
+  if (capped) setStatus(`ÒÑ´ïÖ¡ÊıÉÏÏŞ ${MAX_FRAMES}£¬ÊÓÆµ±»½Ø¶Ï¡£Çë½µµÍÊ±³¤»òÖ¡ÂÊ¡£`, 'warn');
 
-  setProgress(0.78, `ç¼–ç  ${frames.length} å¸§ï¼ˆffmpeg.wasmï¼Œè¯·ç¨å€™ï¼‰â€¦`);
-  const mp4 = await encodeFramesToMp4(frames, fps, (p) => {
-    setProgress(0.78 + 0.12 * p, `å†™å…¥å¸§ ${(p * 100).toFixed(0)}%â€¦`);
+  setProgress(0.78, `±àÂë ${i} Ö¡£¨ffmpeg.wasm£¬ÇëÉÔºò£©¡­`);
+  const mp4 = await enc.finish((p) => {
+    setProgress(0.78 + 0.12 * p, `±àÂë ${(p * 100).toFixed(0)}%¡­`);
   });
   state.rawBlob = mp4;
   state.rawMime = 'video/mp4;codecs=avc1';
+  state.videoInfo = { frames: i, fps, seconds: i / fps };
   if (state.previewTrack) { try { state.previewTrack.stop(); } catch (e) {} }
   finishPipeline();
 }
 
-/* æ•´é¡µå¿«ç…§ï¼šä¸€æ¬¡æ€§æ¸²æŸ“æ•´ç¯‡æ–‡æ¡£ï¼Œä¾›æ»šåŠ¨æ¨¡å¼åˆ‡ç‰‡ï¼›è¶…å¤§é¡µé¢è‡ªåŠ¨é™é‡‡æ · */
+/* ÕûÒ³¿ìÕÕ£ºÒ»´ÎĞÔäÖÈ¾ÕûÆªÎÄµµ£¬¹©¹ö¶¯Ä£Ê½ÇĞÆ¬£»³¬´óÒ³Ãæ×Ô¶¯½µ²ÉÑù */
 async function snapshotFullPage(win, doc, vw) {
   const target = doc.documentElement || doc.body;
   const logicalH = Math.max(target.scrollHeight, target.offsetHeight, doc.body ? doc.body.scrollHeight : 0, 720);
@@ -753,7 +1188,7 @@ async function snapshotFullPage(win, doc, vw) {
     scale,
     useCORS: true,
     allowTaint: false,
-    backgroundColor: '#000000',
+    backgroundColor: resolveFrameBg(doc, win),
     windowWidth: vw,
     windowHeight: logicalH,
     width: vw,
@@ -762,7 +1197,7 @@ async function snapshotFullPage(win, doc, vw) {
     y: 0,
     logging: false,
   });
-  /* æ•´é¡µå¿«ç…§åŒæ ·éœ€è¦è¡¥ç”» canvas / videoï¼Œå¦åˆ™æ»šåŠ¨æ¨¡å¼æ•´ç‰‡é»‘ */
+  /* ÕûÒ³¿ìÕÕÍ¬ÑùĞèÒª²¹»­ canvas / video£¬·ñÔò¹ö¶¯Ä£Ê½ÕûÆ¬ºÚ */
   try {
     await repaintOnce(win);
     const ctx = canvas.getContext('2d');
@@ -778,41 +1213,44 @@ async function snapshotFullPage(win, doc, vw) {
   return { canvas, logicalH };
 }
 
-/* ---------- åœæ­¢ ---------- */
+/* ---------- Í£Ö¹ ---------- */
 function stopRecording() {
   if (!state.recording) return;
   state.recording = false;
+  /* ÏÈÍ£²É¼¯ÔÙÍ£Âó¿Ë·ç£ºË³Ğò·´ÁË»áÈÃÒô¹ìÌáÇ°½áÊø£¬Î²²¿¶ªÒô */
   clearInterval(state.stopPoll);
   clearTimeout(state.timer);
   if (state.recorder && state.recorder.state !== 'inactive') {
     state.recorder.stop();
   }
-  if (state.stream) state.stream.getTracks().forEach(t => t.stop());
-  if (state.demoStream) { state.demoStream.getTracks().forEach(t => t.stop()); state.demoStream = null; }
-  /* æ¼”ç¤ºå½•åˆ¶çš„é¡µé¢æ ‡ç­¾é¡µä¿ç•™ä¸åŠ¨ï¼šç”¨æˆ·å¯èƒ½è¿˜æƒ³ç»§ç»­ç©ï¼Œå·¥å…·åªè´Ÿè´£åœæ­¢é‡‡é›† */
+  if (state.stream) state.stream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+  if (state.demoStream) { state.demoStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} }); state.demoStream = null; }
+  setTimeout(() => closeMic(), 300);
+  if (state.meterRAF) { cancelAnimationFrame(state.meterRAF); state.meterRAF = null; }
+  /* ÑİÊ¾Â¼ÖÆµÄÒ³Ãæ±êÇ©Ò³±£Áô²»¶¯£ºÓÃ»§¿ÉÄÜ»¹Ïë¼ÌĞøÍæ£¬¹¤¾ßÖ»¸ºÔğÍ£Ö¹²É¼¯ */
   if (state.demoRecorded) {
-    /* ç„¦ç‚¹å› Studio æ”¾åˆ°è½¬ç å®Œæˆåå†åšï¼ˆè§ finishï¼‰ï¼Œå¦åˆ™åˆ‡çª—å£é‚£å‡ å¸§ä¼šè¢«å½•è¿›å°¾éƒ¨ */
+    /* ½¹µã»Ø Studio ·Åµ½×ªÂëÍê³ÉºóÔÙ×ö£¨¼û finish£©£¬·ñÔòÇĞ´°¿ÚÄÇ¼¸Ö¡»á±»Â¼½øÎ²²¿ */
     state.demoFocusBack = true;
   }
   state.demoTab = null;
-  setStatus('å½•åˆ¶å®Œæˆï¼Œå¤„ç†ä¸­â€¦');
+  setStatus('Â¼ÖÆÍê³É£¬´¦ÀíÖĞ¡­');
 }
 
-/* ---------- ffmpeg.wasm åå¤„ç† ---------- */
+/* ---------- ffmpeg.wasm ºó´¦Àí ---------- */
 async function getFFmpeg() {
   if (state.ffmpeg) return state.ffmpeg;
-  setStatus('åŠ è½½ ffmpeg.wasmï¼ˆçº¦ 32MBï¼Œé¦–æ¬¡è¾ƒæ…¢ï¼‰â€¦');
-  if (!window.FFmpegWASM || !window.FFmpegWASM.FFmpeg) throw new Error('ffmpeg åº“æœªåŠ è½½ï¼ˆvendor/ffmpeg/ffmpeg.jsï¼‰');
-  if (!window.FFmpegUtil || !window.FFmpegUtil.toBlobURL) throw new Error('ffmpeg util æœªåŠ è½½ï¼ˆvendor/ffmpeg/util.jsï¼‰');
+  setStatus('¼ÓÔØ ffmpeg.wasm£¨Ô¼ 32MB£¬Ê×´Î½ÏÂı£©¡­');
+  if (!window.FFmpegWASM || !window.FFmpegWASM.FFmpeg) throw new Error('ffmpeg ¿âÎ´¼ÓÔØ£¨vendor/ffmpeg/ffmpeg.js£©');
+  if (!window.FFmpegUtil || !window.FFmpegUtil.toBlobURL) throw new Error('ffmpeg util Î´¼ÓÔØ£¨vendor/ffmpeg/util.js£©');
   const { FFmpeg } = FFmpegWASM;
   const { toBlobURL } = FFmpegUtil;
-  // å…¨éƒ¨æœ¬åœ° vendor åŒ–ï¼šæ ¸å¿ƒ/worker åŒæºåŠ è½½ï¼Œä¸ä¾èµ– CDNï¼Œä¹Ÿä¸è¦æ±‚ SharedArrayBuffer
+  // È«²¿±¾µØ vendor »¯£ººËĞÄ/worker Í¬Ô´¼ÓÔØ£¬²»ÒÀÀµ CDN£¬Ò²²»ÒªÇó SharedArrayBuffer
   const base = new URL('vendor/ffmpeg/', document.baseURI).href;
   const ffmpeg = new FFmpeg();
   ffmpeg.on('log', ({ message }) => { console.debug('[ffmpeg]', message); });
   ffmpeg.on('progress', ({ progress, time }) => {
     if (progress > 0 && progress <= 1) {
-      setProgress(0.4 + Math.min(0.5, progress * 0.5), `è½¬ç ä¸­ ${(progress * 100).toFixed(0)}%`);
+      setProgress(0.4 + Math.min(0.5, progress * 0.5), `×ªÂëÖĞ ${(progress * 100).toFixed(0)}%`);
     }
   });
   const coreURL = await toBlobURL(base + 'core.js', 'text/javascript');
@@ -822,7 +1260,7 @@ async function getFFmpeg() {
   return ffmpeg;
 }
 
-/* è¾“å…¥çš„å½•åˆ¶æ–‡ä»¶æ˜¯å¦å«éŸ³é¢‘è½¨ï¼ˆæ— éŸ³è½¨æ—¶ç¦æ­¢å¯¹éŸ³é¢‘åšæ»¤é•œï¼‰ */
+/* ÊäÈëµÄÂ¼ÖÆÎÄ¼şÊÇ·ñº¬ÒôÆµ¹ì£¨ÎŞÒô¹ìÊ±½ûÖ¹¶ÔÒôÆµ×öÂË¾µ£© */
 async function hasAudioTrack(ffmpeg, name) {
   let buf = '';
   const h = ({ message }) => { buf += message + '\n'; };
@@ -832,7 +1270,7 @@ async function hasAudioTrack(ffmpeg, name) {
   return /Stream #\d+:\d+.*Audio:/.test(buf);
 }
 
-/* atempo å•æ¬¡åªæ¥å— 0.5~2ï¼Œè¶…å‡ºèŒƒå›´éœ€è¦ä¸²è” */
+/* atempo µ¥´ÎÖ»½ÓÊÜ 0.5~2£¬³¬³ö·¶Î§ĞèÒª´®Áª */
 function atempoChain(speed) {
   const parts = [];
   let s = speed;
@@ -844,28 +1282,32 @@ function atempoChain(speed) {
 
 async function postProcess() {
   if (!state.rawBlob || state.rawBlob.size < 1024) {
-    setStatus('âŒ å½•åˆ¶å¤±è´¥ï¼šæœªæ•è·åˆ°æœ‰æ•ˆç”»é¢ï¼ˆäº§ç‰©ä½“ç§¯ä¸º 0ï¼‰ã€‚è¯·æ£€æŸ¥é¡µé¢æ˜¯å¦æœ‰å¯è§å†…å®¹ï¼Œæˆ–æ¢ç”¨å…¶ä»–æ¨¡å¼åé‡è¯•ã€‚', 'err');
+    setStatus('? Â¼ÖÆÊ§°Ü£ºÎ´²¶»ñµ½ÓĞĞ§»­Ãæ£¨²úÎïÌå»ıÎª 0£©¡£Çë¼ì²éÒ³ÃæÊÇ·ñÓĞ¿É¼ûÄÚÈİ£¬»ò»»ÓÃÆäËûÄ£Ê½ºóÖØÊÔ¡£', 'err');
     setProgress(0, '');
     $('btnDownload').disabled = true;
     state.recording = false;
-    $('btnStart').disabled = false;
+    setStartDisabled(false);
     if (state.recorder && state.recorder.state !== 'inactive') { try { state.recorder.stop(); } catch (e) {} }
     return;
   }
-  const speed = parseFloat($('optSpeed').value) || 1;
+  const cfg = state.cfg || readCfg();
+  const speed = cfg.speed || 1;
   const music = state.musicFile;
-  /* æ¼”ç¤ºå½•åˆ¶æ˜¯æ•´å±/æ•´æ ‡ç­¾é¡µé‡‡é›†ï¼Œç”»é¢é‡Œå¸¸å¸¦æµè§ˆå™¨åœ°å€æ ã€æ¡Œé¢ã€ä»»åŠ¡æ ã€‚
-     å‹¾é€‰â€œæ¼”ç¤ºç”»é¢è£è¾¹â€æ—¶æŒ‰è¾“å‡ºæ¯”ä¾‹å±…ä¸­è£å‰ªå†ç¼©æ”¾ï¼Œè®©æˆç‰‡åªä¿ç•™å†…å®¹æœ¬èº«ã€‚ */
+  const voiceFile = state.voiceFile;
+  const origFile = state.origVideoFile;
+  /* ÑİÊ¾Â¼ÖÆÊÇÕûÆÁ/Õû±êÇ©Ò³²É¼¯£¬»­ÃæÀï³£´øä¯ÀÀÆ÷µØÖ·À¸¡¢×ÀÃæ¡¢ÈÎÎñÀ¸¡£
+     ¹´Ñ¡¡°ÑİÊ¾»­Ãæ²Ã±ß¡±Ê±°´Êä³ö±ÈÀı¾ÓÖĞ²Ã¼ôÔÙËõ·Å£¬ÈÃ³ÉÆ¬Ö»±£ÁôÄÚÈİ±¾Éí¡£ */
   const [oW, oH] = outputSize();
-  const demoCrop = !!(state.demoRecorded && $('optDemoCrop') && $('optDemoCrop').checked);
-  const wantFmt = $('optFormat').value;
+  const demoCrop = !!(state.demoRecorded && cfg.demoCrop);
+  const wantFmt = cfg.format;
   const rawMime = (state.rawMime || state.rawBlob.type || '').toLowerCase();
   const rawIsH264Mp4 = rawMime.includes('mp4') && (rawMime.includes('avc') || rawMime.includes('h264'));
   const rawIsMp4 = rawMime.includes('mp4');
 
-  // éœ€è¦ ffmpeg çš„æƒ…å½¢ï¼šè¦ MP4 ä½†ä¸æ˜¯åŸç”Ÿ H.264ã€æˆ–è¦ WebM ä½†åŸå§‹æ˜¯ MP4ã€æˆ–è¦å˜é€Ÿã€æˆ–è¦æ··éŸ³
+  // ĞèÒª ffmpeg µÄÇéĞÎ£ºÒª MP4 µ«²»ÊÇÔ­Éú H.264¡¢»òÒª WebM µ«Ô­Ê¼ÊÇ MP4¡¢»òÒª±äËÙ¡¢»òÒª»ìÒô/ÅäÒô
   const toWebm = (wantFmt === 'webm' && rawIsMp4);
-  const needFfmpeg = (wantFmt === 'mp4' && !rawIsH264Mp4) || toWebm || speed !== 1 || !!music || demoCrop;
+  const needFfmpeg = (wantFmt === 'mp4' && !rawIsH264Mp4) || toWebm || speed !== 1
+    || !!music || !!voiceFile || !!origFile || demoCrop;
 
   if (!needFfmpeg) {
     state.resultBlob = state.rawBlob;
@@ -877,47 +1319,77 @@ async function postProcess() {
   const inExt = rawIsMp4 ? 'mp4' : 'webm';
   await ffmpeg.writeFile('input.' + inExt, new Uint8Array(await state.rawBlob.arrayBuffer()));
   const hasAudio = await hasAudioTrack(ffmpeg, 'input.' + inExt);
+
   const args = ['-y', '-i', 'input.' + inExt];
-  if (music) {
-    const bgmName = 'bgm' + extOf(music.name);
-    await ffmpeg.writeFile(bgmName, new Uint8Array(await music.arrayBuffer()));
-    args.push('-i', bgmName);
-  }
+  let idx = 1;
+  const addInput = async (file, prefix) => {
+    const name = prefix + extOf(file.name || '');
+    await ffmpeg.writeFile(name, new Uint8Array(await file.arrayBuffer()));
+    args.push('-i', name);
+    return idx++;
+  };
+  const vVoice = voiceFile ? await addInput(voiceFile, 'voice') : -1;
+  const vMusic = music ? await addInput(music, 'bgm') : -1;
+  const vOrig = origFile ? await addInput(origFile, 'orig') : -1;
+
+  /* Ä¿±êÊ±³¤£ºÒÔ¡°Éè¶¨Ê±³¤ / Ô­Ê¼Ê±³¤¡±Îª×¼£¬×îºóÍ³Ò» -t ½Ø¶Ï ¡ª¡ª ²»¹ÜäÖÈ¾¿ìÂı¡¢Â¼ÖÆ¶àÉÙÖ¡£¬
+     ³ÉÆ¬Ê±³¤¶¼ÑÏ¸ñµÈÓÚÉè¶¨Öµ£¬ÕâÊÇ¡°Ê±¼ä¿ØÖÆ²»×¼¡±µÄ¸ùÖÎ°ì·¨¡£ */
+  const durRaw = await probeDuration();
+  const durFixed = (cfg.durMode === 'fixed' && cfg.fixedSec > 0) ? cfg.fixedSec : 0;
+  const durVideo = durFixed || (durRaw > 0 ? durRaw : 0);
+  const durOut = durVideo > 0 ? durVideo / speed : 0;
+
+  const filterParts = [];
+  const mapArgs = [];
   const vfChain = [];
   if (demoCrop) {
-    // å±…ä¸­è£å‰ªæˆç›®æ ‡æ¯”ä¾‹ï¼ˆä¸æ”¹å½¢å˜ï¼‰ï¼Œå†ç¼©æ”¾åˆ°ç›®æ ‡åˆ†è¾¨ç‡
+    // ¾ÓÖĞ²Ã¼ô³ÉÄ¿±ê±ÈÀı£¨²»¸ÄĞÎ±ä£©£¬ÔÙËõ·Åµ½Ä¿±ê·Ö±æÂÊ
     vfChain.push(`crop=w=min(iw\\,ih*${oW}/${oH}):h=min(ih\\,iw*${oH}/${oW}):x=(iw-ow)/2:y=(ih-oh)/2`);
     vfChain.push(`scale=${oW}:${oH}:flags=bicubic`);
   }
   if (speed !== 1) vfChain.push(`setpts=${(1 / speed).toFixed(4)}*PTS`);
-  const vf = vfChain.length ? vfChain.join(',') : null;
-  const af = speed !== 1 && hasAudio ? atempoChain(speed) : null;
-
-  const filterParts = [];
-  const mapArgs = [];
-  if (vf) {
-    filterParts.push(`[0:v:0]${vf}[v0]`);
+  if (vfChain.length) {
+    filterParts.push(`[0:v:0]${vfChain.join(',')}[v0]`);
     mapArgs.push('-map', '[v0]');
   } else {
     mapArgs.push('-map', '0:v:0');
   }
-  if (music) {
-    const vol = (parseFloat($('optMusicVol').value) / 100).toFixed(2);
-    // èƒŒæ™¯éŸ³ä¹å¾ªç¯é“ºæ»¡ â†’ å˜è°ƒåŒæ­¥ â†’ æŒ‰â€œå˜é€Ÿåæ—¶é•¿â€æˆªæ–­ï¼ˆWebM éœ€ seek hack æ‰èƒ½å–åˆ°æ—¶é•¿ï¼‰
-    const rawDur = await probeDuration();
-    const dur = Number.isFinite(rawDur) && rawDur > 0 ? rawDur : 0;
-    const chain = [`volume=${vol}`];
-    if (dur) chain.push('aloop=loop=-1:size=2e9', `atrim=0:${dur.toFixed(3)}`);
-    chain.push('asetpts=PTS-STARTPTS');
-    if (speed !== 1) chain.push(atempoChain(speed));
-    if (dur) chain.push(`atrim=0:${(dur / speed).toFixed(3)}`);
-    filterParts.push(`[1:a]${chain.join(',')}[a0]`);
-    mapArgs.push('-map', '[a0]', '-shortest');
-  } else if (af) {
-    filterParts.push(`[0:a]${af}[a0]`);
-    mapArgs.push('-map', '[a0]');
-  } else if (hasAudio) {
-    mapArgs.push('-map', '0:a?');
+
+  /* ÒôÆµ»ìÒô£ºÂ¼½øÈ¥µÄ½âËµ£¨Âó¿Ë·ç¹ì£©+ µ¼ÈëµÄÅäÒô + ±³¾°ÒôÀÖ + Ò³ÃæÔ­Éù£¬ÈÎÒâ×éºÏ */
+  const aChains = [];
+  const aLabels = [];
+  const mk = (spec, label, c) => { aChains.push(`[${spec}]${c.join(',')}[${label}]`); aLabels.push(`[${label}]`); };
+  if (hasAudio) {
+    const c = [`volume=${(cfg.origVol != null ? cfg.origVol : 1).toFixed(2)}`];
+    if (durOut) c.push(`atrim=0:${durOut.toFixed(3)}`);
+    c.push('asetpts=PTS-STARTPTS');
+    mk('0:a:0', 'araw', c);
+  }
+  if (vVoice >= 0) {
+    const ms = Math.max(0, Math.round((cfg.voiceDelay || 0) * 1000));
+    const c = [`volume=${(cfg.voiceVol != null ? cfg.voiceVol : 1).toFixed(2)}`, `adelay=${ms}|${ms}`];
+    if (durOut) c.push(`atrim=0:${durOut.toFixed(3)}`);
+    c.push('asetpts=PTS-STARTPTS');
+    mk(`${vVoice}:a`, 'avoi', c);
+  }
+  if (vMusic >= 0) {
+    const c = [`volume=${(cfg.musicVol != null ? cfg.musicVol : 0.3).toFixed(2)}`];
+    if (durOut) c.push('aloop=loop=-1:size=2e9', `atrim=0:${durOut.toFixed(3)}`);
+    c.push('asetpts=PTS-STARTPTS');
+    mk(`${vMusic}:a`, 'abgm', c);
+  }
+  if (vOrig >= 0) {
+    const c = [`volume=${(cfg.origVol != null ? cfg.origVol : 1).toFixed(2)}`];
+    if (durOut) c.push(`atrim=0:${durOut.toFixed(3)}`);
+    c.push('asetpts=PTS-STARTPTS');
+    mk(`${vOrig}:a`, 'aorg', c);
+  }
+  if (aLabels.length) {
+    if (aLabels.length === 1) filterParts.push(...aChains, `${aLabels[0]}anull[amixd]`);
+    else filterParts.push(...aChains, `${aLabels.join('')}amix=inputs=${aLabels.length}:duration=longest:dropout_transition=0:normalize=0[amixd]`);
+    if (speed !== 1) filterParts.push(`[amixd]${atempoChain(speed)}[aout]`);
+    else filterParts.push('[amixd]anull[aout]');
+    mapArgs.push('-map', '[aout]');
   }
   if (filterParts.length) args.push('-filter_complex', filterParts.join(';'));
   if (toWebm) {
@@ -925,23 +1397,24 @@ async function postProcess() {
   } else {
     args.push(...mapArgs, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-vsync', 'vfr');
   }
-  if (music || af || hasAudio) args.push('-c:a', toWebm ? 'libvorbis' : 'aac', '-b:a', '128k');
+  if (aLabels.length) args.push('-c:a', toWebm ? 'libvorbis' : 'aac', '-b:a', '160k');
+  if (durOut > 0) args.push('-t', durOut.toFixed(3));
   const outName = toWebm ? 'output.webm' : 'output.mp4';
   args.push(outName);
 
   try {
-    setProgress(0.85, 'è½¬ç ä¸­ï¼ˆffmpeg.wasm å•çº¿ç¨‹è¾ƒæ…¢ï¼Œè¯·è€å¿ƒç­‰å¾…ï¼‰â€¦');
+    setProgress(0.85, '×ªÂëÖĞ£¨ffmpeg.wasm µ¥Ïß³Ì½ÏÂı£¬ÇëÄÍĞÄµÈ´ı£©¡­');
     await ffmpeg.exec(args);
-    setProgress(0.95, 'å°è£…è¾“å‡ºâ€¦');
+    setProgress(0.95, '·â×°Êä³ö¡­');
     const data = await ffmpeg.readFile(outName);
     state.resultBlob = new Blob([data.buffer], { type: toWebm ? 'video/webm' : 'video/mp4' });
     finish(toWebm ? 'webm' : 'mp4');
   } catch (e) {
     if (!music && speed === 1 && rawIsMp4) {
-      // è½¬ç å¤±è´¥ä½†å·²æœ‰å¯ç›´æ¥æ’­æ”¾çš„ MP4
+      // ×ªÂëÊ§°Üµ«ÒÑÓĞ¿ÉÖ±½Ó²¥·ÅµÄ MP4
       state.resultBlob = state.rawBlob;
       finish('mp4');
-      setStatus('âš ï¸ H.264 è½¬ç å¤±è´¥ï¼Œå·²è¾“å‡ºåŸå§‹ç¼–ç  MP4ï¼ˆéƒ¨åˆ†æ’­æ”¾å™¨å¯èƒ½ä¸å…¼å®¹ï¼‰ï¼š' + (e.message || e), 'warn');
+      setStatus('?? H.264 ×ªÂëÊ§°Ü£¬ÒÑÊä³öÔ­Ê¼±àÂë MP4£¨²¿·Ö²¥·ÅÆ÷¿ÉÄÜ²»¼æÈİ£©£º' + (e.message || e), 'warn');
     } else {
       throw e;
     }
@@ -952,7 +1425,7 @@ function extOf(name) { const m = /\.\w+$/.exec(name); return m ? m[0].toLowerCas
 
 function isMp4Blob(blob) { return (blob.type || '').startsWith('video/mp4'); }
 
-/* è¯»å–å½•åˆ¶æ–‡ä»¶çœŸå®æ—¶é•¿ï¼›WebM å¸¸è¿”å› Infinityï¼Œéœ€ seek åˆ°æå€¼è§¦å‘æµè§ˆå™¨è®¡ç®—æ—¶é•¿ */
+/* ¶ÁÈ¡Â¼ÖÆÎÄ¼şÕæÊµÊ±³¤£»WebM ³£·µ»Ø Infinity£¬Ğè seek µ½¼«Öµ´¥·¢ä¯ÀÀÆ÷¼ÆËãÊ±³¤ */
 async function probeDuration() {
   if (!state.rawBlob) return 0;
   const url = URL.createObjectURL(state.rawBlob);
@@ -980,26 +1453,33 @@ async function probeDuration() {
 }
 
 function finish(ext) {
-  setProgress(1, 'å®Œæˆ');
+  setProgress(1, 'Íê³É');
   $('btnDownload').disabled = false;
-  /* æ¼”ç¤ºå½•åˆ¶åœ¨æ¼”ç¤ºé¡µç‚¹çš„â€œç»“æŸâ€ï¼šå½•åˆ¶å·²åœï¼Œè¿™æ—¶å†æŠŠç„¦ç‚¹æ‹‰å› Studio æ‰å®‰å…¨ */
+  /* ÑİÊ¾Â¼ÖÆÔÚÑİÊ¾Ò³µãµÄ¡°½áÊø¡±£ºÂ¼ÖÆÒÑÍ££¬ÕâÊ±ÔÙ°Ñ½¹µãÀ­»Ø Studio ²Å°²È« */
   if (state.demoFocusBack) {
     state.demoFocusBack = false;
     try { window.focus(); } catch (_) {}
   }
-  const base = `âœ… å·²ç”Ÿæˆ ${ext.toUpperCase()}ï¼ˆ${fmtSize(state.resultBlob.size)}ï¼‰ï¼Œç‚¹å‡»ä¸‹è½½ã€‚`;
+  const base = `? ÒÑÉú³É ${ext.toUpperCase()}£¨${fmtSize(state.resultBlob.size)}£©£¬µã»÷ÏÂÔØ¡£`;
   const extra = [];
   if (state.blackWarn) {
-    extra.push('âš ï¸ è‡ªæ£€æç¤ºï¼šæˆç‰‡ä¸­æœ‰å¤§é‡çº¯é»‘ç”»é¢ï¼Œå¤šåŠæ˜¯ canvas / WebGL / iframe ç­‰ç‰¹æ®Šæ¸²æŸ“å¯¼è‡´ã€‚è¯·æ”¹ç”¨ã€Œæ¼”ç¤ºå½•åˆ¶ã€æ¨¡å¼é‡å½•ï¼Œå¯å®Œæ•´ä¿ç•™æ¸¸æˆä¸äº¤äº’ç”»é¢ã€‚');
+    extra.push('?? ×Ô¼ìÌáÊ¾£º³ÉÆ¬ÖĞÓĞ´óÁ¿´¿ºÚ»­Ãæ£¬¶à°ëÊÇ canvas / WebGL / iframe µÈÌØÊâäÖÈ¾µ¼ÖÂ¡£Çë¸ÄÓÃ¡¸ÑİÊ¾Â¼ÖÆ¡¹Ä£Ê½ÖØÂ¼£¬¿ÉÍêÕû±£ÁôÓÎÏ·Óë½»»¥»­Ãæ¡£');
   }
-  if (state.canvasWarn) extra.push('âš ï¸ ' + state.canvasWarn);
+  if (state.canvasWarn) extra.push('?? ' + state.canvasWarn);
   if (extra.length) setStatus(base + '\n' + extra.join('\n'), 'warn');
   else setStatus(base, 'ok');
 }
 
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(2) + ' MB' : (n / 1024).toFixed(1) + ' KB'; }
 
-/* ---------- UI å·¥å…· ---------- */
+/* ---------- UI ¹¤¾ß ---------- */
+/* ¶¥²¿Óëµ×²¿Á½¸ö¡°¿ªÊ¼¡±°´Å¥Ê¼ÖÕÍ¬×´Ì¬£¬±ÜÃâÒÆ¶¯¶Ë¹öµ½µ×²¿Ê±¿´²»µ½¿ÉÓÃ°´Å¥ */
+function setStartDisabled(v) {
+  ['btnStart', 'btnStart2'].forEach((id) => {
+    const el = $(id);
+    if (el) el.disabled = v;
+  });
+}
 function setStatus(msg, cls) {
   const el = $('statusBar');
   el.textContent = msg;
@@ -1025,30 +1505,145 @@ function guessMime(p) {
   return map[ext] || 'application/octet-stream';
 }
 
-/* ---------- æ¼”ç¤ºå½•åˆ¶ ----------
- * åœºæ™¯ï¼šæ¸¸æˆã€å¯äº¤äº’ Demoã€éœ€è¦é”®ç›˜/é¼ æ ‡è¾“å…¥æˆ–çœŸå®æ—¶é’Ÿçš„å¤æ‚é¡µé¢ã€‚
- * é€å¸§å¼•æ“å¯¹è¿™ç±»é¡µé¢æ— èƒ½ä¸ºåŠ›ï¼ˆè™šæ‹Ÿæ—¶é’Ÿä¼šå†»ç»“æ¸¸æˆå¾ªç¯ã€è¾“å…¥æ— æ³•äº§ç”Ÿï¼‰ï¼Œ
- * å› æ­¤æ”¹æˆï¼šçœŸæ­£æ‰“å¼€é¡µé¢ â†’ é‡‡é›†æ ‡ç­¾é¡µç”»é¢ â†’ ç”¨æˆ·äº²æ‰‹ç©/æ¼”ç¤º â†’ å®Œæˆåè½¬ç ã€‚
- * å¥½å¤„ï¼šWebGLã€canvasã€iframeã€éŸ³è§†é¢‘ã€é”®é¼ äº¤äº’å…¨éƒ¨åŸæ ·ä¿ç•™ï¼Œåˆ†è¾¨ç‡è·ŸéšçœŸå®çª—å£ï¼ˆå¯ F11 å…¨å±ï¼‰ã€‚ */
+/* ---------- ½âËµÒôÆµ²É¼¯Óë»ìÒô£¨ÎÊÌâ 5£© ----------
+ * Â¼ÆÁÊ±Í¬²½Â¼ÏÂÓÃ»§½âËµ£ºgetUserMedia ÄÃÂó¿Ë·ç ¡ú WebAudio »ìÒô ¡ú
+ * ×÷ÎªÒ»ÌõÒô¹ì addTrack µ½Â¼ÖÆµÄÊÓÆµÁ÷ÉÏ£¬MediaRecorder Ò»´ÎÂ¼³É¡°»­Ãæ + ½âËµ¡±¡£
+ * ºÃ´¦£º²»ĞèÒªÂ¼ÍêÔÙ¶Ô¹ì£¬½âËµÓë»­ÃæÌìÈ»Í¬²½£»Ò²¿ÉÔÚÂ¼ÖÆÖĞÊµÊ±¾²Òô/µ÷ÒôÁ¿¡£ */
+async function ensureMicStream() {
+  if (state.micStream && state.micStream.getAudioTracks().some(t => t.readyState === 'live')) return state.micStream;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error('µ±Ç°ä¯ÀÀÆ÷²»Ö§³ÖÂó¿Ë·ç²É¼¯£¨Ğè HTTPS »ò localhost£©');
+  }
+  const s = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: 1,
+    },
+  });
+  state.micStream = s;
+  return s;
+}
+
+function closeMic() {
+  if (state.micStream) {
+    state.micStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+    state.micStream = null;
+  }
+  if (state.audioCtx) {
+    try { state.audioCtx.close(); } catch (e) {}
+    state.audioCtx = null;
+  }
+  state.audioMix = null;
+}
+
+/* °ÑÂó¿Ë·ç£¨ÒÔ¼°¿ÉÑ¡µÄÏµÍ³/±êÇ©Ò³ÉùÒô£©»ì³ÉÒ»ÌõÒô¹ì¹Òµ½Â¼ÖÆÁ÷ÉÏ¡£
+ * ·µ»Ø»ìÒôºóµÄ MediaStreamAudioDestinationNode£¬±ãÓÚÂ¼ÖÆÖĞÊµÊ±¾²Òô¡£ */
+async function attachAudioToStream(stream, extraTrack) {
+  const cfg = state.cfg || {};
+  if (!cfg.voice && !extraTrack) return null;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error('ä¯ÀÀÆ÷²»Ö§³Ö WebAudio');
+    const ctx = state.audioCtx || new AC();
+    state.audioCtx = ctx;
+    if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (e) {} }
+    const dest = ctx.createMediaStreamDestination();
+    const mix = { ctx, dest, gain: null, sysGain: null };
+    if (cfg.voice) {
+      const mic = await ensureMicStream();
+      const src = ctx.createMediaStreamSource(mic);
+      const g = ctx.createGain();
+      g.gain.value = (cfg.voiceVol != null ? cfg.voiceVol : 1);
+      src.connect(g).connect(dest);
+      mix.gain = g;
+      /* ·ÀÖ¹½âËµ±¬Òô£º´®Ò»¸öÑ¹ÏŞÆ÷ */
+      try {
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -18; comp.knee.value = 12; comp.ratio.value = 4;
+        g.disconnect(); g.connect(comp).connect(dest);
+        mix.comp = comp;
+      } catch (e) {}
+    }
+    if (extraTrack) {
+      const sysSrc = ctx.createMediaStreamSource(new MediaStream([extraTrack]));
+      const g2 = ctx.createGain();
+      g2.gain.value = (cfg.sysVol != null ? cfg.sysVol : 0.8);
+      sysSrc.connect(g2).connect(dest);
+      mix.sysGain = g2;
+    }
+    dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+    state.audioMix = mix;
+    return dest.stream;
+  } catch (e) {
+    setStatus('?? Âó¿Ë·ç²»¿ÉÓÃ£¬±¾´ÎÖ»Â¼»­Ãæ£º' + (e.message || e), 'warn');
+    return null;
+  }
+}
+
+/* Â¼ÖÆÖĞµÄÒôÁ¿±í + Ò»¼ü¾²Òô£ºÈÃÓÃ»§È·ÈÏ½âËµÕæµÄÂ¼½øÈ¥ÁË */
+function startAudioMeter() {
+  const bar = $('micLevel');
+  const btn = $('btnMicMute');
+  if (btn && !btn.__bound) {
+    btn.__bound = true;
+    btn.addEventListener('click', () => {
+      const m = state.audioMix;
+      if (!m || !m.gain) return;
+      m.muted = !m.muted;
+      m.gain.gain.value = m.muted ? 0 : (state.cfg.voiceVol != null ? state.cfg.voiceVol : 1);
+      btn.textContent = m.muted ? '½âËµÒÑ¾²Òô' : '¾²Òô½âËµ';
+      btn.classList.toggle('muted', !!m.muted);
+    });
+  }
+  const m = state.audioMix;
+  if (!bar || !m || !m.ctx) return;
+  if (state.meterRAF) cancelAnimationFrame(state.meterRAF);
+  let an = null, data = null;
+  try {
+    an = m.ctx.createAnalyser();
+    an.fftSize = 512;
+    if (m.gain) m.gain.connect(an);
+    data = new Uint8Array(an.frequencyBinCount);
+  } catch (e) { return; }
+  const tick = () => {
+    if (!state.recording) { bar.style.width = '0%'; return; }
+    an.getByteFrequencyData(data);
+    let s = 0;
+    for (let i = 0; i < data.length; i++) s += data[i];
+    const v = Math.min(1, (s / data.length) / 90);
+    bar.style.width = (v * 100).toFixed(0) + '%';
+    state.meterRAF = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+/* ---------- ÑİÊ¾Â¼ÖÆ ----------
+ * ³¡¾°£ºÓÎÏ·¡¢¿É½»»¥ Demo¡¢ĞèÒª¼üÅÌ/Êó±êÊäÈë»òÕæÊµÊ±ÖÓµÄ¸´ÔÓÒ³Ãæ¡£
+ * ÖğÖ¡ÒıÇæ¶ÔÕâÀàÒ³ÃæÎŞÄÜÎªÁ¦£¨ĞéÄâÊ±ÖÓ»á¶³½áÓÎÏ·Ñ­»·¡¢ÊäÈëÎŞ·¨²úÉú£©£¬
+ * Òò´Ë¸Ä³É£ºÕæÕı´ò¿ªÒ³Ãæ ¡ú ²É¼¯±êÇ©Ò³»­Ãæ ¡ú ÓÃ»§Ç×ÊÖÍæ/ÑİÊ¾ ¡ú Íê³Éºó×ªÂë¡£
+ * ºÃ´¦£ºWebGL¡¢canvas¡¢iframe¡¢ÒôÊÓÆµ¡¢¼üÊó½»»¥È«²¿Ô­Ñù±£Áô£¬·Ö±æÂÊ¸úËæÕæÊµ´°¿Ú£¨¿É F11 È«ÆÁ£©¡£ */
 async function startDemoRecording() {
-  if (!state.files || !state.entry) { setStatus('è¯·å…ˆä¸Šä¼  HTML æ–‡ä»¶', 'err'); return; }
+  if (!state.files || !state.entry) { setStatus('ÇëÏÈÉÏ´« HTML ÎÄ¼ş', 'err'); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-    setStatus('å½“å‰æµè§ˆå™¨ä¸æ”¯æŒå±å¹•/æ ‡ç­¾é¡µå½•åˆ¶ï¼ˆéœ€è¦ Chrome / Edge æ¡Œé¢ç‰ˆï¼‰ã€‚', 'err');
+    setStatus('µ±Ç°ä¯ÀÀÆ÷²»Ö§³ÖÆÁÄ»/±êÇ©Ò³Â¼ÖÆ£¨ĞèÒª Chrome / Edge ×ÀÃæ°æ£©¡£', 'err');
     return;
   }
-  if (!state.swReady) { setStatus('è™šæ‹Ÿç›®å½•å°šæœªå°±ç»ªï¼Œè¯·ç¨å€™å†ç‚¹å¼€å§‹ï¼ˆæˆ–é‡æ–°ä¸Šä¼ æ–‡ä»¶ï¼‰ã€‚', 'err'); return; }
+  if (!state.swReady) { setStatus('ĞéÄâÄ¿Â¼ÉĞÎ´¾ÍĞ÷£¬ÇëÉÔºòÔÙµã¿ªÊ¼£¨»òÖØĞÂÉÏ´«ÎÄ¼ş£©¡£', 'err'); return; }
 
-  const fps = Math.max(24, parseInt($('optFps').value) || 30);
-  const withAudio = !!($('optAudio') && $('optAudio').checked);
+  const cfg = state.cfg || readCfg();
+  const fps = Math.max(24, cfg.fps || 30);
+  const withAudio = !!(cfg.sysAudio || cfg.voice);
 
-  /* å…³é”®é¡ºåºï¼šwindow.open ä¸ getDisplayMedia å¿…é¡»å¤„åœ¨åŒä¸€ä¸ªç”¨æˆ·ç‚¹å‡»ä»»åŠ¡é‡Œï¼Œ
-     å¦åˆ™å¼¹çª—è¢«æ‹¦æˆªã€æˆ–æ•è·æˆæƒå› â€œç¼ºå°‘ç”¨æˆ·æ‰‹åŠ¿â€ç›´æ¥å¤±è´¥ã€‚ */
+  /* ¹Ø¼üË³Ğò£ºwindow.open Óë getDisplayMedia ±ØĞë´¦ÔÚÍ¬Ò»¸öÓÃ»§µã»÷ÈÎÎñÀï£¬
+     ·ñÔòµ¯´°±»À¹½Ø¡¢»ò²¶»ñÊÚÈ¨Òò¡°È±ÉÙÓÃ»§ÊÖÊÆ¡±Ö±½ÓÊ§°Ü¡£ */
   let tab = null;
   try {
     tab = window.open('./__vfs__' + state.entry + '?__mcv=demo', '_blank');
   } catch (e) { tab = null; }
   if (!tab) {
-    setStatus('æ–°æ ‡ç­¾é¡µè¢«æµè§ˆå™¨æ‹¦æˆªï¼šè¯·å…è®¸æœ¬ç«™å¼¹å‡ºçª—å£åé‡è¯•ã€‚', 'err');
+    setStatus('ĞÂ±êÇ©Ò³±»ä¯ÀÀÆ÷À¹½Ø£ºÇëÔÊĞí±¾Õ¾µ¯³ö´°¿ÚºóÖØÊÔ¡£', 'err');
     return;
   }
   state.demoTab = tab;
@@ -1056,8 +1651,8 @@ async function startDemoRecording() {
   let stream = null;
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({
-      /* ä¼˜å…ˆå¼•å¯¼ç”¨æˆ·é€‰â€œæ ‡ç­¾é¡µâ€ï¼šè¿™æ ·å½•åˆ°çš„å°±æ˜¯çº¯ç½‘é¡µç”»é¢ï¼Œå¤©ç„¶å°±æ˜¯å…¨å±ã€æ²¡æœ‰åœ°å€æ ã€‚
-         æ’é™¤å½“å‰ Studio é¡µï¼Œé¿å…è¯¯é€‰è‡ªå·±ï¼›å…è®¸å½•åˆ¶ä¸­åˆ‡æ¢å…±äº«æºã€‚ */
+      /* ÓÅÏÈÒıµ¼ÓÃ»§Ñ¡¡°±êÇ©Ò³¡±£ºÕâÑùÂ¼µ½µÄ¾ÍÊÇ´¿ÍøÒ³»­Ãæ£¬ÌìÈ»¾ÍÊÇÈ«ÆÁ¡¢Ã»ÓĞµØÖ·À¸¡£
+         ÅÅ³ıµ±Ç° Studio Ò³£¬±ÜÃâÎóÑ¡×Ô¼º£»ÔÊĞíÂ¼ÖÆÖĞÇĞ»»¹²ÏíÔ´¡£ */
       video: {
         frameRate: { ideal: fps, max: 60 },
         displaySurface: 'browser',
@@ -1071,7 +1666,7 @@ async function startDemoRecording() {
   } catch (e) {
     try { tab.close(); } catch (_) {}
     state.demoTab = null;
-    setStatus('æœªè·å¾—å½•åˆ¶æˆæƒï¼ˆ' + (e && e.message ? e.message : e) + 'ï¼‰ã€‚æç¤ºï¼šåœ¨å¼¹å‡ºçš„é€‰æ‹©å™¨é‡Œé€‰åˆšæ‰“å¼€çš„é‚£ä¸ªæ ‡ç­¾é¡µã€‚', 'err');
+    setStatus('Î´»ñµÃÂ¼ÖÆÊÚÈ¨£¨' + (e && e.message ? e.message : e) + '£©¡£ÌáÊ¾£ºÔÚµ¯³öµÄÑ¡ÔñÆ÷ÀïÑ¡¸Õ´ò¿ªµÄÄÇ¸ö±êÇ©Ò³¡£', 'err');
     return;
   }
 
@@ -1079,55 +1674,69 @@ async function startDemoRecording() {
   state.demoStream = stream;
   state.demoRecorded = true;
   state.demoStart = performance.now();
-  $('btnStart').disabled = true;
+  setStartDisabled(true);
   $('btnStop').disabled = false;
   $('btnDownload').disabled = true;
   setProgress(0, '');
 
   attachPreview(stream);
+  /* ½âËµÍ¬²½£ºÂó¿Ë·ç +£¨¿ÉÑ¡£©Ò³ÃæÉùÒô»ì³ÉÒ»ÌõÒô¹ì£¬Ëæ»­ÃæÒ»ÆğÂ¼½øÍ¬Ò»¸öÎÄ¼ş */
+  const sysTrack = withAudio ? stream.getAudioTracks()[0] : null;
+  await attachAudioToStream(stream, sysTrack);
+  if (state.audioMix) startAudioMeter();
+  state.demoSysAudio = !!sysTrack;
   makeRecorder(stream, 12_000_000);
 
-  /* æˆæƒå®Œæˆåå°½é‡æŠŠæ¼”ç¤ºæ ‡ç­¾é¡µæåˆ°å‰é¢ï¼šç”¨æˆ·ä¸å¿…å†æ‰‹åŠ¨åˆ‡æ¢ï¼Œ
-     å½•åˆ°çš„å¼€å¤´å°±ä¸ä¼šæ˜¯æœ¬ Studio çš„ç•Œé¢ã€‚ */
+  /* ÊÚÈ¨Íê³Éºó¾¡Á¿°ÑÑİÊ¾±êÇ©Ò³Ìáµ½Ç°Ãæ£ºÓÃ»§²»±ØÔÙÊÖ¶¯ÇĞ»»£¬
+     Â¼µ½µÄ¿ªÍ·¾Í²»»áÊÇ±¾ Studio µÄ½çÃæ¡£ */
   try { if (state.demoTab && state.demoTab.focus) state.demoTab.focus(); } catch (_) {}
 
   const vt = stream.getVideoTracks()[0];
   if (vt) vt.addEventListener('ended', () => { if (state.recording) stopRecording(); });
 
-  /* ç”¨æˆ·å¯èƒ½è¯¯é€‰â€œæ•´ä¸ªå±å¹•â€ï¼šå½•åˆ°çš„ä¼šå¸¦æ¡Œé¢å’Œåˆ«çš„çª—å£ï¼Œè£è¾¹ä¹Ÿæ•‘ä¸å›æ¥ã€‚
-     è¿™é‡Œè¯» displaySurface ç»™ä¸€æ¬¡æ˜ç¡®æç¤ºï¼Œè®¡æ—¶çŠ¶æ€é‡Œä¸€ç›´æŒ‚ç€ã€‚ */
+  /* ÓÃ»§¿ÉÄÜÎóÑ¡¡°Õû¸öÆÁÄ»¡±£ºÂ¼µ½µÄ»á´ø×ÀÃæºÍ±ğµÄ´°¿Ú£¬²Ã±ßÒ²¾È²»»ØÀ´¡£
+     ÕâÀï¶Á displaySurface ¸øÒ»´ÎÃ÷È·ÌáÊ¾£¬¼ÆÊ±×´Ì¬ÀïÒ»Ö±¹Ò×Å¡£ */
   let surface = '';
   try {
     const vs = vt && vt.getSettings ? vt.getSettings() : {};
     surface = vs.displaySurface || '';
   } catch (_) {}
   if (surface === 'monitor') {
-    state.demoWarn = 'âš  ä½ é€‰çš„æ˜¯â€œæ•´ä¸ªå±å¹•â€ï¼Œæˆç‰‡ä¼šåŒ…å«æ¡Œé¢ä¸å…¶å®ƒçª—å£ã€‚æƒ³è¦å¹²å‡€çš„å…¨å±ç½‘é¡µç”»é¢ï¼Œè¯·åœæ­¢åé‡æ¥ï¼Œåœ¨å¼¹çª—é‡Œæ”¹é€‰é‚£ä¸ªæ ‡ç­¾é¡µ / Chrome æ ‡ç­¾é¡µã€‚';
+    state.demoWarn = '? ÄãÑ¡µÄÊÇ¡°Õû¸öÆÁÄ»¡±£¬³ÉÆ¬»á°üº¬×ÀÃæÓëÆäËü´°¿Ú¡£ÏëÒª¸É¾»µÄÈ«ÆÁÍøÒ³»­Ãæ£¬ÇëÍ£Ö¹ºóÖØÀ´£¬ÔÚµ¯´°Àï¸ÄÑ¡ÄÇ¸ö±êÇ©Ò³ / Chrome ±êÇ©Ò³¡£';
   } else if (surface === 'window') {
-    state.demoWarn = 'æç¤ºï¼šä½ é€‰çš„æ˜¯â€œçª—å£â€ï¼Œç”»é¢é‡Œä¼šæœ‰æµè§ˆå™¨æ ‡é¢˜æ ã€‚æƒ³è¦çº¯å‡€å…¨å±ç”»é¢ï¼Œå¯åœæ­¢åæ”¹é€‰é‚£ä¸ªæ ‡ç­¾é¡µã€‚';
+    state.demoWarn = 'ÌáÊ¾£ºÄãÑ¡µÄÊÇ¡°´°¿Ú¡±£¬»­ÃæÀï»áÓĞä¯ÀÀÆ÷±êÌâÀ¸¡£ÏëÒª´¿¾»È«ÆÁ»­Ãæ£¬¿ÉÍ£Ö¹ºó¸ÄÑ¡ÄÇ¸ö±êÇ©Ò³¡£';
   } else {
     state.demoWarn = '';
   }
 
-  /* æ¼”ç¤ºé¡µé‡Œçš„â€œç»“æŸå½•åˆ¶â€èƒ¶å›Šä¼šè°ƒè¿™ä¸ªå‡½æ•°ï¼šç”¨æˆ·åœ¨æ–°æ ‡ç­¾é¡µç›´æ¥ç»“æŸï¼Œ
-     ä¸ç”¨åˆ‡å› Studioï¼Œæˆç‰‡å°¾éƒ¨ä¸ä¼šé—ªè¿›æœ¬é¡µç•Œé¢ã€‚ */
+  /* ÑİÊ¾Ò³ÀïµÄ¡°½áÊøÂ¼ÖÆ¡±½ºÄÒ»áµ÷Õâ¸öº¯Êı£ºÓÃ»§ÔÚĞÂ±êÇ©Ò³Ö±½Ó½áÊø£¬
+     ²»ÓÃÇĞ»Ø Studio£¬³ÉÆ¬Î²²¿²»»áÉÁ½ø±¾Ò³½çÃæ¡£ */
   window.__MCV_stopDemo = () => { if (state.recording) stopRecording(); };
   window.addEventListener('message', (e) => {
     if (e && e.data && e.data.__mcv === 'stop-demo' && state.recording) stopRecording();
   });
 
-  setStatus('æ¼”ç¤ºå½•åˆ¶ä¸­ï¼šåˆ‡åˆ°æ–°æ ‡ç­¾é¡µï¼Œå…ˆç‚¹é¡µé¢ä¸Šçš„â€œè¿›å…¥å…¨å±â€æŒ‰é’®ï¼Œå†æ­£å¸¸æ’­æ”¾ / ç‚¹å‡» / æ¸¸ç©ï¼›ç»“æŸåå›åˆ°æœ¬é¡µç‚¹â€œåœæ­¢â€ã€‚'
+  setStatus('ÑİÊ¾Â¼ÖÆÖĞ£ºÇĞµ½ĞÂ±êÇ©Ò³£¬ÏÈµãÒ³ÃæÉÏµÄ¡°½øÈëÈ«ÆÁ¡±°´Å¥£¬ÔÙÕı³£²¥·Å / µã»÷ / ÓÎÍæ£»½áÊøºó»Øµ½±¾Ò³µã¡°Í£Ö¹¡±¡£'
     + (state.demoWarn ? '\n' + state.demoWarn : ''), state.demoWarn ? 'warn' : 'ok');
   state.timer = setInterval(() => {
-    const s = Math.round((performance.now() - state.demoStart) / 1000);
-    setStatus(`æ¼”ç¤ºå½•åˆ¶ä¸­ ${s}sï¼šåœ¨æ–°æ ‡ç­¾é¡µå…¨å±æ“ä½œï¼Œç»“æŸåå›åˆ°æœ¬é¡µç‚¹â€œåœæ­¢â€ã€‚`
+    const elapsed = (performance.now() - state.demoStart) / 1000;
+    const durTxt = (cfg.durMode === 'fixed' && cfg.fixedSec > 0)
+      ? ` / Éè¶¨ ${cfg.fixedSec}s`
+      : '';
+    setStatus(`ÑİÊ¾Â¼ÖÆÖĞ ${Math.round(elapsed)}s${durTxt}£ºÔÚĞÂ±êÇ©Ò³È«ÆÁ²Ù×÷£¬½áÊøºó»Øµ½±¾Ò³µã¡°Í£Ö¹¡±¡£`
+      + (cfg.voice ? '\n?? ½âËµÒÑ¿ªÆô£¬Ëµ»°¼´¿ÉÍ¬²½Â¼½øÊÓÆµ£»Â¼ÖÆÖĞ¿Éµã¡°¾²Òô½âËµ¡±¡£' : '')
       + (state.demoWarn ? '\n' + state.demoWarn : ''), state.demoWarn ? 'warn' : 'ok');
-  }, 1000);
+    /* Éè¶¨Ê±³¤µ½µã×Ô¶¯Í£Ö¹£º²»ÔÙ¿¿ÓÃ»§ÊÖ¶¯Æşµã£¬³ÉÆ¬³¤¶È²Å¿É¿Ø */
+    if (cfg.durMode === 'fixed' && cfg.fixedSec > 0 && elapsed >= cfg.fixedSec) {
+      setStatus(`ÒÑµ½Éè¶¨Ê±³¤ ${cfg.fixedSec}s£¬×Ô¶¯Í£Ö¹Â¼ÖÆ¡£`, 'ok');
+      stopRecording();
+    }
+  }, 250);
 }
 
-/* ---------- äº§ç‰©é»‘å±è‡ªæ£€ ----------
- * å½•åˆ¶/ç¼–ç åæŠ½è‹¥å¹²å¸§ç»Ÿè®¡æš—åƒç´ æ¯”ä¾‹ï¼šæ•´ç‰‡æ¥è¿‘çº¯é»‘æ—¶æ˜ç¡®å‘Šè­¦å¹¶ç»™å‡ºæ›¿ä»£æ–¹æ¡ˆï¼Œ
- * é¿å…ç”¨æˆ·æ‹¿åˆ°ä¸€ä¸ªâ€œçœ‹èµ·æ¥æˆåŠŸã€å®é™…å…¨é»‘â€çš„è§†é¢‘ã€‚ */
+/* ---------- ²úÎïºÚÆÁ×Ô¼ì ----------
+ * Â¼ÖÆ/±àÂëºó³éÈô¸ÉÖ¡Í³¼Æ°µÏñËØ±ÈÀı£ºÕûÆ¬½Ó½ü´¿ºÚÊ±Ã÷È·¸æ¾¯²¢¸ø³öÌæ´ú·½°¸£¬
+ * ±ÜÃâÓÃ»§ÄÃµ½Ò»¸ö¡°¿´ÆğÀ´³É¹¦¡¢Êµ¼ÊÈ«ºÚ¡±µÄÊÓÆµ¡£ */
 async function detectBlackFrames(blob) {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(blob);
@@ -1179,18 +1788,21 @@ async function detectBlackFrames(blob) {
   });
 }
 
-/* ---------- ä¸»æµç¨‹ ---------- */
+/* ---------- Ö÷Á÷³Ì ---------- */
 async function start() {
-  if (!state.files || !state.entry) { setStatus('è¯·å…ˆä¸Šä¼  HTML æ–‡ä»¶', 'err'); return; }
+  if (!state.files || !state.entry) { setStatus('ÇëÏÈÉÏ´« HTML ÎÄ¼ş', 'err'); return; }
+  /* ²ÎÊıÔÚ¡°¿ªÊ¼¡±ÕâÒ»¿Ì¶³½á³É¿ìÕÕ£»Ö®ºóÃæ°åÔÙÔõÃ´µ÷¶¼²»»áÓ°Ïì±¾´ÎÈÎÎñ */
+  state.cfg = readCfg();
+  const cfg = state.cfg;
 
-  /* æ¼”ç¤ºå½•åˆ¶å¿…é¡»åœ¨ç”¨æˆ·ç‚¹å‡»çš„åŒä¸€ä»»åŠ¡é‡Œå‘èµ·ï¼ˆgetDisplayMedia éœ€è¦ç”¨æˆ·æ‰‹åŠ¿ï¼‰ï¼Œ
-     æ‰€ä»¥æ”¾åœ¨ä»»ä½• await ä¹‹å‰ï¼Œç¬¬ä¸€æ—¶é—´æ‰“å¼€æ ‡ç­¾é¡µå¹¶ç”³è¯·æ•è·ã€‚ */
-  if ($('optMode').value === 'demo') {
+  /* ÑİÊ¾Â¼ÖÆ±ØĞëÔÚÓÃ»§µã»÷µÄÍ¬Ò»ÈÎÎñÀï·¢Æğ£¨getDisplayMedia ĞèÒªÓÃ»§ÊÖÊÆ£©£¬
+     ËùÒÔ·ÅÔÚÈÎºÎ await Ö®Ç°£¬µÚÒ»Ê±¼ä´ò¿ª±êÇ©Ò³²¢ÉêÇë²¶»ñ¡£ */
+  if (cfg.mode === 'demo') {
     await startDemoRecording();
     return;
   }
 
-  $('btnStart').disabled = true;
+  setStartDisabled(true);
   $('btnStop').disabled = false;
   $('btnDownload').disabled = true;
   state.recording = true;
@@ -1200,95 +1812,108 @@ async function start() {
 
   try {
     if (!state.swReady) await setupVFS();
-    setStatus('åŠ è½½ç”¨æˆ·é¡µé¢â€¦');
+    setStatus('¼ÓÔØÓÃ»§Ò³Ãæ¡­');
     await loadUserPage();
-    await waitHidden($('optWaitHidden').value.trim());
-    if ($('optInjectJs').value.trim()) {
-      await evaluate($('optInjectJs').value);
+    await waitHidden(cfg.waitHidden);
+    if (cfg.injectJs) {
+      await evaluate(cfg.injectJs);
     }
-    /* ç‚¹â€œæ’­æ”¾å¯åŠ¨åŠ¨ä½œâ€ä¹‹å‰å…ˆæ‰«ä¸€çœ¼ï¼šè‹¥é¡µé¢è¢«ä¸€å±‚é“ºæ»¡è§†å£çš„â€œç‚¹å‡»å¼€å§‹â€é®ç½©æŒ¡ä½ï¼Œ
-       è‡ªåŠ¨æŠŠå®ƒçš„é€‰æ‹©å™¨å¡«è¿›å¯åŠ¨åŠ¨ä½œï¼Œå¦åˆ™ canvas ç›´å½•ä¼šæ‹¿åˆ° 0 å­—èŠ‚ / å…¨é»‘æˆç‰‡ã€‚ */
-    if (!($('optClickSel').value || '').trim()) {
+    /* µã¡°²¥·ÅÆô¶¯¶¯×÷¡±Ö®Ç°ÏÈÉ¨Ò»ÑÛ£ºÈôÒ³Ãæ±»Ò»²ãÆÌÂúÊÓ¿ÚµÄ¡°µã»÷¿ªÊ¼¡±ÕÚÕÖµ²×¡£¬
+       ×Ô¶¯°ÑËüµÄÑ¡ÔñÆ÷Ìî½øÆô¶¯¶¯×÷£¬·ñÔò canvas Ö±Â¼»áÄÃµ½ 0 ×Ö½Ú / È«ºÚ³ÉÆ¬¡£ */
+    if (!cfg.clickSel) {
       const ovPre = findStartOverlay(frame.win, frame.doc, frame.W, frame.H);
       if (ovPre && ovPre.sel) {
+        cfg.clickSel = ovPre.sel;
         $('optClickSel').value = ovPre.sel;
-        console.info('[auto-click] æ£€æµ‹åˆ°å¼€å§‹é®ç½©', ovPre);
+        console.info('[auto-click] ¼ì²âµ½¿ªÊ¼ÕÚÕÖ', ovPre);
       }
     }
-    await clickSel($('optClickSel').value.trim());
-    await sleep(parseInt($('optDelay').value) || 0);
+    await clickSel(cfg.clickSel);
+    await sleep(cfg.delay);
 
-    const mode = $('optMode').value;
-    const fps = parseInt($('optFps').value) || 10;
-    const durMode = $('optDuration').value;
-    const fixedSec = parseFloat($('optDurationSec').value) || 10;
-    const stopJs = $('optStopJs').value.trim();
-    const scrollSpeed = parseFloat($('optScrollSpeed').value) || 150;
+    const mode = cfg.mode;
+    const fps = cfg.fps;
+    const durMode = cfg.durMode;
+    const fixedSec = cfg.fixedSec;
+    const stopJs = cfg.stopJs;
+    const scrollSpeed = cfg.scrollSpeed;
 
-    setStatus('å¼€å§‹å½•åˆ¶â€¦');
+    setStatus('¿ªÊ¼Â¼ÖÆ¡­');
 
-    const engine = ($('optEngine') && $('optEngine').value) || 'precise';
-    const bigCanvas = pickCanvas();            // é“ºæ»¡è§†å£ â†’ å¯ä»¥ç›´å½•
-    const anyCanvas = pickCanvas(0.12);        // åªè¦æœ‰ä¸€å®šé¢ç§¯çš„ canvasï¼Œå°±å¿…é¡»èµ°è§†å£é€å¸§ + è¡¥ç»˜
+    const engine = cfg.engine;
+    const bigCanvas = pickCanvas();            // ÆÌÂúÊÓ¿Ú ¡ú ¿ÉÒÔÖ±Â¼
+    const anyCanvas = pickCanvas(0.12);        // Ö»ÒªÓĞÒ»¶¨Ãæ»ıµÄ canvas£¬¾Í±ØĞë×ßÊÓ¿ÚÖğÖ¡ + ²¹»æ
     const scrollable = (frame.doc.documentElement.scrollHeight > frame.H + 4);
     const motion = hasMotion(frame.doc);
 
-    // å…¼å®¹æ€§é¢„æ£€
+    // ¼æÈİĞÔÔ¤¼ì
     const issues = scanCompat(frame.doc);
     if (issues.length) console.warn('[compat]', issues);
 
     let modeReal = mode;
     let hint = '';
     if (modeReal === 'auto') {
-      /* canvas é¢ç§¯å æ¯”ï¼šæ¸¸æˆ/åŠ¨ç”»é¡µçš„ canvas å¾€å¾€åªå è§†å£ä¸€éƒ¨åˆ†ï¼ˆå‘¨å›´æœ‰ HUDã€æŒ‰é’®ã€è¯´æ˜ï¼‰ï¼Œ
-         ä»¥å‰ä¼šè¢«åˆ¤æˆâ€œæ•´é¡µæ»šåŠ¨â€ï¼Œæ•´é¡µå¿«ç…§åªèƒ½æˆªä¸€å¸§é™æ€å›¾ï¼Œçœ‹èµ·æ¥å°±æ˜¯é»‘å±/ä¸åŠ¨ã€‚
-         ç°åœ¨åªè¦å­˜åœ¨å¤§ canvas å°±èµ°è§†å£é€å¸§ï¼ˆé€å¸§æ—¶ canvas ä¼šè¢«çœŸå®è¡¥ç»˜ï¼‰ï¼Œä¿è¯ç”»é¢æ˜¯æ´»çš„ã€‚ */
+      /* canvas Ãæ»ıÕ¼±È£ºÓÎÏ·/¶¯»­Ò³µÄ canvas ÍùÍùÖ»Õ¼ÊÓ¿ÚÒ»²¿·Ö£¨ÖÜÎ§ÓĞ HUD¡¢°´Å¥¡¢ËµÃ÷£©£¬
+         ÒÔÇ°»á±»ÅĞ³É¡°ÕûÒ³¹ö¶¯¡±£¬ÕûÒ³¿ìÕÕÖ»ÄÜ½ØÒ»Ö¡¾²Ì¬Í¼£¬¿´ÆğÀ´¾ÍÊÇºÚÆÁ/²»¶¯¡£
+         ÏÖÔÚÖ»Òª´æÔÚ´ó canvas ¾Í×ßÊÓ¿ÚÖğÖ¡£¨ÖğÖ¡Ê± canvas »á±»ÕæÊµ²¹»æ£©£¬±£Ö¤»­ÃæÊÇ»îµÄ¡£ */
       let canvasRatio = 0;
       if (anyCanvas) {
         const r = anyCanvas.getBoundingClientRect();
         canvasRatio = (r.width * r.height) / Math.max(1, frame.W * frame.H);
       }
-      if (bigCanvas && canvasRatio >= 0.7 && !hasDomText(frame.doc)) modeReal = 'canvas';
-      else if (anyCanvas && canvasRatio >= 0.12) modeReal = 'dom';
+      if (bigCanvas && canvasRatio >= 0.7) {
+        /* Ö±Â¼Ö»¿´ canvas ÏñËØ£ºÖ»ÒªÉÏÃæÑ¹×Å¿É¼ûµÄ±êÌâ/×ÖÄ»/°´Å¥£¬¾Í»á°ÑÕâĞ©ÎÄ×Ö¶ªµô¡£
+           ÒÔÇ°ÓÃ¡°ÎÄ×Ö×Ü³¤¶È > 40¡±ÅĞ¶Ï£¬¶Ì±êÌâ£¨ÀàÊÓÆµ²¥·ÅÒ³µÄÆ¬Ãû¡¢×ÖÄ»£©ÅĞ²»³öÀ´£¬
+           ³ÉÆ¬¾ÍÊÇ¡°ÓĞ»­ÃæÃ»ÎÄ×Ö¡±¡£ÕâÀï¸Ä³É°´¸²¸ÇÃæ»ıÕ¼±ÈÅĞ¶Ï¡£ */
+        const ovRatio = canvasOverlayRatio(frame.doc, bigCanvas);
+        if (ovRatio < 0.02) {
+          modeReal = 'canvas';
+        } else {
+          modeReal = 'dom';
+          hint = (hint ? hint + '\n' : '')
+            + `canvas ÉÏµş×ÅÎÄ×Ö/¿Ø¼ş£¨Ô¼Õ¼»­Ãæ ${Math.round(ovRatio * 100)}%£©£¬ÒÑ¸ÄÓÃÊÓ¿ÚÖğÖ¡ºÏ³É£¬`
+            + '±£Ö¤»­ÃæºÍÎÄ×Ö¶¼ÔÚ³ÉÆ¬Àï¡£';
+        }
+      } else if (anyCanvas && canvasRatio >= 0.12) modeReal = 'dom';
       else if (scrollable) modeReal = 'scroll';
       else modeReal = 'dom';
       if (anyCanvas && modeReal !== 'canvas') {
-        hint = 'æ£€æµ‹åˆ° canvas åŠ¨ç”»åŒºï¼šå·²è‡ªåŠ¨è¡¥ç»˜çœŸå®ç”»é¢ï¼›è‹¥é¡µé¢éœ€è¦ç‚¹å‡»/é”®ç›˜æ“ä½œï¼Œè¯·æ”¹ç”¨ã€Œæ¼”ç¤ºå½•åˆ¶ã€æ¨¡å¼ã€‚';
+        hint = '¼ì²âµ½ canvas ¶¯»­Çø£ºÒÑ×Ô¶¯²¹»æÕæÊµ»­Ãæ£»ÈôÒ³ÃæĞèÒªµã»÷/¼üÅÌ²Ù×÷£¬Çë¸ÄÓÃ¡¸ÑİÊ¾Â¼ÖÆ¡¹Ä£Ê½¡£';
       }
-      /* é¡µé¢æ³¨å†Œäº†å¤§é‡é”®é¼ ç›‘å¬ â†’ å…¸å‹æ¸¸æˆ/äº¤äº’ Demoï¼Œé€å¸§å½•åˆ¶åªä¼šå¾—åˆ°é™æ­¢ç”»é¢ */
+      /* Ò³Ãæ×¢²áÁË´óÁ¿¼üÊó¼àÌı ¡ú µäĞÍÓÎÏ·/½»»¥ Demo£¬ÖğÖ¡Â¼ÖÆÖ»»áµÃµ½¾²Ö¹»­Ãæ */
       let inputHits = 0;
       try {
         inputHits = (frame.win && frame.win.__MCV && frame.win.__MCV.input) || 0;
-      } catch (e) { /* è·¨åŸŸè®¿é—®é™åˆ¶å¿½ç•¥ */ }
+      } catch (e) { /* ¿çÓò·ÃÎÊÏŞÖÆºöÂÔ */ }
       if (inputHits >= 2) {
         hint = (hint ? hint + '\n' : '')
-          + `è¿™ä¸ªé¡µé¢æ³¨å†Œäº† ${inputHits} å¤„é”®é¼ /è§¦æ‘¸ç›‘å¬ï¼Œå±äºäº¤äº’å‹é¡µé¢ï¼ˆæ¸¸æˆ / å¯æ“ä½œ Demoï¼‰ï¼š`
-          + 'é€å¸§å½•åˆ¶æ— æ³•äº§ç”ŸçœŸå®è¾“å…¥ï¼Œå»ºè®®æ”¹ç”¨ã€Œæ¼”ç¤ºå½•åˆ¶ã€ï¼Œè‡ªå·±ç‚¹ç€ç©ã€å…¨ç¨‹çœŸå®å½•ä¸‹æ¥ã€‚';
+          + `Õâ¸öÒ³Ãæ×¢²áÁË ${inputHits} ´¦¼üÊó/´¥Ãş¼àÌı£¬ÊôÓÚ½»»¥ĞÍÒ³Ãæ£¨ÓÎÏ· / ¿É²Ù×÷ Demo£©£º`
+          + 'ÖğÖ¡Â¼ÖÆÎŞ·¨²úÉúÕæÊµÊäÈë£¬½¨Òé¸ÄÓÃ¡¸ÑİÊ¾Â¼ÖÆ¡¹£¬×Ô¼ºµã×ÅÍæ¡¢È«³ÌÕæÊµÂ¼ÏÂÀ´¡£';
       }
-      /* é“ºæ»¡è§†å£çš„â€œç‚¹å‡»å¼€å§‹â€é®ç½©ï¼šç›´æ¥å½•åªä¼šå¾—åˆ°é™æ­¢/ç©ºç™½ç”»é¢ */
+      /* ÆÌÂúÊÓ¿ÚµÄ¡°µã»÷¿ªÊ¼¡±ÕÚÕÖ£ºÖ±½ÓÂ¼Ö»»áµÃµ½¾²Ö¹/¿Õ°×»­Ãæ */
       const ov = findStartOverlay(frame.win, frame.doc, frame.W, frame.H);
       if (ov && ov.sel) {
         const cur = ($('optClickSel').value || '').trim();
         if (!cur) {
           $('optClickSel').value = ov.sel;
           hint = (hint ? hint + '\n' : '')
-            + `é¡µé¢æœ‰ä¸€å±‚"${ov.text || 'å¼€å§‹'}â€¦"é®ç½©é“ºæ»¡ç”»é¢ï¼Œå·²è‡ªåŠ¨æŠŠã€Œæ’­æ”¾å¯åŠ¨åŠ¨ä½œã€å¡«ä¸º ${ov.sel}ï¼›`
-            + 'å½•åˆ¶æ—¶ä¼šå…ˆç‚¹å®ƒå†å¼€å§‹ã€‚è‹¥ç‚¹äº†æ²¡ååº”ï¼Œæ”¹ç”¨ã€Œæ¼”ç¤ºå½•åˆ¶ã€è‡ªå·±ç‚¹å¼€å†å½•ã€‚';
+            + `Ò³ÃæÓĞÒ»²ã"${ov.text || '¿ªÊ¼'}¡­"ÕÚÕÖÆÌÂú»­Ãæ£¬ÒÑ×Ô¶¯°Ñ¡¸²¥·ÅÆô¶¯¶¯×÷¡¹ÌîÎª ${ov.sel}£»`
+            + 'Â¼ÖÆÊ±»áÏÈµãËüÔÙ¿ªÊ¼¡£ÈôµãÁËÃ»·´Ó¦£¬¸ÄÓÃ¡¸ÑİÊ¾Â¼ÖÆ¡¹×Ô¼ºµã¿ªÔÙÂ¼¡£';
         } else {
           hint = (hint ? hint + '\n' : '')
-            + `é¡µé¢æœ‰ä¸€å±‚é“ºæ»¡ç”»é¢çš„é®ç½©ï¼ˆ${ov.sel}ï¼‰ï¼Œå¦‚æœå½•å‡ºæ¥æ˜¯é™æ€ç”»é¢ï¼ŒæŠŠã€Œæ’­æ”¾å¯åŠ¨åŠ¨ä½œã€æ”¹æˆå®ƒã€‚`;
+            + `Ò³ÃæÓĞÒ»²ãÆÌÂú»­ÃæµÄÕÚÕÖ£¨${ov.sel}£©£¬Èç¹ûÂ¼³öÀ´ÊÇ¾²Ì¬»­Ãæ£¬°Ñ¡¸²¥·ÅÆô¶¯¶¯×÷¡¹¸Ä³ÉËü¡£`;
         }
       }
-      const label = modeReal === 'canvas' ? 'åŠ¨ç”»ï¼ˆcanvas ç›´å½•ï¼‰'
-        : modeReal === 'scroll' ? 'æ•´é¡µæ»šåŠ¨' : 'åŠ¨ç”»ï¼ˆè§†å£å†…ï¼‰';
-      const engLabel = modeReal === 'canvas' ? 'å®æ—¶ç›´å½•' : (engine === 'fast' ? 'å®æ—¶' : 'ç²¾ç¡®é€å¸§');
-      setStatus(`è‡ªåŠ¨åˆ¤å®šï¼š${label}ï½œå¼•æ“ï¼š${engLabel}`
-        + (issues.length ? `\nå…¼å®¹æ€§æç¤ºï¼š${issues.join('ï¼›')}` : '')
+      const label = modeReal === 'canvas' ? '¶¯»­£¨canvas Ö±Â¼£©'
+        : modeReal === 'scroll' ? 'ÕûÒ³¹ö¶¯' : '¶¯»­£¨ÊÓ¿ÚÄÚ£©';
+      const engLabel = modeReal === 'canvas' ? 'ÊµÊ±Ö±Â¼' : (engine === 'fast' ? 'ÊµÊ±' : '¾«È·ÖğÖ¡');
+      setStatus(`×Ô¶¯ÅĞ¶¨£º${label}£üÒıÇæ£º${engLabel}`
+        + (issues.length ? `\n¼æÈİĞÔÌáÊ¾£º${issues.join('£»')}` : '')
         + (hint ? `\n${hint}` : ''), (issues.length || hint) ? 'warn' : '');
     }
 
     if (engine === 'precise' && modeReal !== 'canvas') {
-      // ç²¾ç¡®é€å¸§ï¼šCSS/rAF åŠ¨ç”»æŒ‰å¸§æ¨è¿› + çŠ¶æ€çƒ˜ç„™ + å›ºå®šå¸§ç‡åˆæˆï¼ŒåŠ¨æ•ˆå®Œæ•´ä¸ä¸¢å¸§
+      // ¾«È·ÖğÖ¡£ºCSS/rAF ¶¯»­°´Ö¡ÍÆ½ø + ×´Ì¬ºæ±º + ¹Ì¶¨Ö¡ÂÊºÏ³É£¬¶¯Ğ§ÍêÕû²»¶ªÖ¡
       await startPrecise(fps, { durMode, fixedSec, stopJs, scroll: modeReal === 'scroll', scrollSpeed });
     } else if (modeReal === 'scroll') {
       await startDomFrame(fps, 'scroll', { durMode, fixedSec, scrollSpeed });
@@ -1298,7 +1923,7 @@ async function start() {
       await startDomFrame(fps, 'live', { durMode, fixedSec, scrollSpeed });
     }
 
-    // ç²¾ç¡®å¼•æ“è‡ªè¡Œå¤„ç†æ—¶é•¿ä¸åœæ­¢è¡¨è¾¾å¼ï¼Œæ— éœ€å¤–éƒ¨è®¡æ—¶
+    // ¾«È·ÒıÇæ×ÔĞĞ´¦ÀíÊ±³¤ÓëÍ£Ö¹±í´ïÊ½£¬ÎŞĞèÍâ²¿¼ÆÊ±
     const selfTimed = (engine === 'precise' && modeReal !== 'canvas');
     if (!selfTimed) {
       if (stopJs) {
@@ -1313,13 +1938,13 @@ async function start() {
         state.timer = setTimeout(stopRecording, fixedSec * 1000);
       }
       if (durMode === 'auto' && !stopJs && modeReal !== 'scroll') {
-        setStatus('è‡ªåŠ¨æ¨¡å¼ï¼ˆåŠ¨ç”»ï¼‰éœ€è¦åœæ­¢è¡¨è¾¾å¼æˆ–æ‰‹åŠ¨åœæ­¢ï¼Œå·²åˆ‡æ¢ä¸ºæ‰‹åŠ¨åœæ­¢ã€‚', 'warn');
+        setStatus('×Ô¶¯Ä£Ê½£¨¶¯»­£©ĞèÒªÍ£Ö¹±í´ïÊ½»òÊÖ¶¯Í£Ö¹£¬ÒÑÇĞ»»ÎªÊÖ¶¯Í£Ö¹¡£', 'warn');
       }
     }
   } catch (e) {
     state.recording = false;
-    setStatus('å½•åˆ¶å¤±è´¥: ' + e.message, 'err');
-    $('btnStart').disabled = false;
+    setStatus('Â¼ÖÆÊ§°Ü: ' + e.message, 'err');
+    setStartDisabled(false);
     $('btnStop').disabled = true;
   }
 }
@@ -1327,12 +1952,12 @@ async function start() {
 async function onStop() {
   stopRecording();
   $('btnStop').disabled = true;
-  // å…œåº•ï¼šè‹¥ recorder å·² inactive æœªè§¦å‘ onstopï¼Œè¿™é‡Œç›´æ¥æ¥ç®¡åå¤„ç†
+  // ¶µµ×£ºÈô recorder ÒÑ inactive Î´´¥·¢ onstop£¬ÕâÀïÖ±½Ó½Ó¹Üºó´¦Àí
   await sleep(300);
   if (state.rawBlob) finishPipeline();
 }
 
-/* å½•åˆ¶ç»“æŸåçš„ç»Ÿä¸€æ”¶å°¾ï¼ˆå¹‚ç­‰ï¼Œé¿å…å®šæ—¶åœæ­¢/æ‰‹åŠ¨åœæ­¢é‡å¤è§¦å‘ï¼‰ */
+/* Â¼ÖÆ½áÊøºóµÄÍ³Ò»ÊÕÎ²£¨ÃİµÈ£¬±ÜÃâ¶¨Ê±Í£Ö¹/ÊÖ¶¯Í£Ö¹ÖØ¸´´¥·¢£© */
 let pipelineRunning = false;
 async function finishPipeline() {
   if (pipelineRunning) return;
@@ -1340,7 +1965,7 @@ async function finishPipeline() {
   pipelineRunning = true;
   try {
     clearInterval(state.timer);
-    /* æˆç‰‡é»‘å±è‡ªæ£€ï¼šåªåšæç¤ºï¼Œä¸é˜»å¡äº§ç‰© */
+    /* ³ÉÆ¬ºÚÆÁ×Ô¼ì£ºÖ»×öÌáÊ¾£¬²»×èÈû²úÎï */
     try {
       const chk = await detectBlackFrames(state.rawBlob);
       if (chk && chk.darkRatio >= 0.85) state.blackWarn = true;
@@ -1348,15 +1973,15 @@ async function finishPipeline() {
     } catch (e) { console.warn('[black-check]', e && e.message); }
     await postProcess();
   } catch (e) {
-    setStatus('å¤„ç†å¤±è´¥: ' + (e.message || e), 'err');
+    setStatus('´¦ÀíÊ§°Ü: ' + (e.message || e), 'err');
   } finally {
     pipelineRunning = false;
-    $('btnStart').disabled = false;
+    setStartDisabled(false);
     $('btnStop').disabled = true;
   }
 }
 
-/* ---------- äº‹ä»¶ç»‘å®š ---------- */
+/* ---------- ÊÂ¼ş°ó¶¨ ---------- */
 function initEvents() {
   const dz = $('dropZone');
   dz.addEventListener('click', () => $('fileInput').click());
@@ -1372,10 +1997,11 @@ function initEvents() {
   });
   $('btnRemoveFiles').addEventListener('click', () => {
     state.files = null; state.entry = null; state.swReady = false;
-    $('fileBox').hidden = true; $('btnStart').disabled = true;
-    setStatus('ç­‰å¾…ä¸Šä¼  HTMLâ€¦');
+    $('fileBox').hidden = true; setStartDisabled(true);
+    setStatus('µÈ´ıÉÏ´« HTML¡­');
   });
   $('btnStart').addEventListener('click', start);
+  if ($('btnStart2')) $('btnStart2').addEventListener('click', start);
   $('btnStop').addEventListener('click', onStop);
   $('btnDownload').addEventListener('click', () => {
     if (!state.resultBlob) return;
@@ -1386,11 +2012,35 @@ function initEvents() {
     a.click();
   });
   $('optMusic').addEventListener('change', (e) => { state.musicFile = e.target.files[0] || null; });
+  if ($('optVoiceFile')) {
+    $('optVoiceFile').addEventListener('change', (e) => {
+      state.voiceFile = e.target.files[0] || null;
+      const h = $('voiceFileHint');
+      if (h) h.textContent = state.voiceFile
+        ? `ÒÑÑ¡ÅäÒô£º${state.voiceFile.name}£¨³ÉÆ¬Ê±ÓëÔ­Éù¡¢ÒôÀÖ»ìºÏ£©`
+        : '¿ÉÉÏ´« mp3 / m4a / wav ½âËµÒô¹ì£¬³ÉÆ¬Ê±ÓëÔ­Éù¡¢ÒôÀÖ»ìºÏ';
+    });
+  }
+  if ($('optVoice')) {
+    /* ¹´Ñ¡¼´¿ÌÉêÇëÂó¿Ë·ç£º³ÃÓÃ»§ÊÖÊÆÔÚÊÖ£¬Â¼ÖÆÊ±¾Í²»»áÒòÎªÈ¨ÏŞµ¯´°³ÔµôµÚÒ»¾ä»° */
+    $('optVoice').addEventListener('change', async (e) => {
+      if (e.target.checked) {
+        try {
+          await ensureMicStream();
+          const b = $('btnMicMute');
+          if (b) b.disabled = false;
+        } catch (err) {
+          e.target.checked = false;
+          setStatus('Âó¿Ë·ç²»¿ÉÓÃ£º' + (err.message || err) + '£¨ĞèÒª HTTPS »ò localhost£¬ÇÒÔÊĞíÂó¿Ë·çÈ¨ÏŞ£©', 'warn');
+        }
+      }
+    });
+  }
   $('optDuration').addEventListener('change', (e) => {
     $('optDurationSec').disabled = e.target.value !== 'fixed';
   });
 
-  /* æ¼”ç¤ºæ¨¡å¼ï¼šä¸èµ°é€å¸§å¼•æ“ï¼ŒæŠŠåªå¯¹é€å¸§ç”Ÿæ•ˆçš„è®¾ç½®ç½®ç°ï¼Œé¿å…è¯¯è§£ */
+  /* ÑİÊ¾Ä£Ê½£º²»×ßÖğÖ¡ÒıÇæ£¬°ÑÖ»¶ÔÖğÖ¡ÉúĞ§µÄÉèÖÃÖÃ»Ò£¬±ÜÃâÎó½â */
   const syncModeUI = () => {
     const demo = $('optMode').value === 'demo';
     ['optEngine', 'optDuration', 'optClickSel', 'optWaitHidden', 'optDelay',
@@ -1398,7 +2048,7 @@ function initEvents() {
       const el = $(id);
       if (el) el.disabled = demo;
     });
-    /* åˆ†è¾¨ç‡å†³å®šäº†æˆç‰‡æ¯”ä¾‹ï¼Œæ¼”ç¤ºæ¨¡å¼ç…§æ ·è¦èƒ½é€‰ï¼ˆè£è¾¹ä¼šæŒ‰å®ƒå¯¹é½ï¼‰ */
+    /* ·Ö±æÂÊ¾ö¶¨ÁË³ÉÆ¬±ÈÀı£¬ÑİÊ¾Ä£Ê½ÕÕÑùÒªÄÜÑ¡£¨²Ã±ß»á°´Ëü¶ÔÆë£© */
     $('optDurationSec').disabled = demo || $('optDuration').value !== 'fixed';
     if ($('optDemoCrop')) {
       $('optDemoCrop').disabled = !demo;
@@ -1408,8 +2058,15 @@ function initEvents() {
       $('optAudio').disabled = !demo;
       $('optAudio').closest('.check').style.opacity = demo ? '1' : '0.45';
     }
+    /* Âó¿Ë·ç½âËµÖ»ÔÚÑİÊ¾Â¼ÖÆÊ±ÓĞĞ§£»µ¼ÈëÅäÒô / Ô­Éù / ÒôÀÖÔÚÈÎºÎÄ£Ê½¶¼²ÎÓë³ÉÆ¬»ìÒô */
+    if ($('optVoice')) {
+      $('optVoice').disabled = !demo;
+      const row = $('optVoice').closest('.row');
+      if (row) row.style.opacity = demo ? '1' : '0.45';
+    }
+    if ($('btnMicMute')) $('btnMicMute').disabled = !demo || !$('optVoice').checked;
     if (demo) {
-      setStatus('æ¼”ç¤ºå½•åˆ¶ï¼šç‚¹â€œå¼€å§‹å½•åˆ¶â€ä¼šæ–°å¼€ä¸€ä¸ªæ ‡ç­¾é¡µå¹¶è¯·æ±‚å½•åˆ¶æˆæƒâ€”â€”åœ¨å¼¹çª—é‡Œé€‰â€œè¿™ä¸ªæ ‡ç­¾é¡µ / Chrome æ ‡ç­¾é¡µâ€ï¼Œç„¶ååœ¨æ–°é¡µé¢ç‚¹â€œè¿›å…¥å…¨å±â€ï¼Œå†æ­£å¸¸æ’­æ”¾/æ¸¸ç©ï¼Œç»“æŸå›åˆ°æœ¬é¡µç‚¹â€œåœæ­¢â€ã€‚', 'ok');
+      setStatus('ÑİÊ¾Â¼ÖÆ£ºµã¡°¿ªÊ¼Â¼ÖÆ¡±»áĞÂ¿ªÒ»¸ö±êÇ©Ò³²¢ÇëÇóÂ¼ÖÆÊÚÈ¨¡ª¡ªÔÚµ¯´°ÀïÑ¡¡°Õâ¸ö±êÇ©Ò³ / Chrome ±êÇ©Ò³¡±£¬È»ºóÔÚĞÂÒ³Ãæµã¡°½øÈëÈ«ÆÁ¡±£¬ÔÙÕı³£²¥·Å/ÓÎÍæ£¬½áÊø»Øµ½±¾Ò³µã¡°Í£Ö¹¡±¡£', 'ok');
     }
   };
   $('optMode').addEventListener('change', syncModeUI);
@@ -1418,23 +2075,23 @@ function initEvents() {
 
 async function handleFiles(files) {
   try {
-    setStatus('è§£ææ–‡ä»¶â€¦');
+    setStatus('½âÎöÎÄ¼ş¡­');
     const { files: fmap, entry } = await collectFiles(files);
     state.files = fmap; state.entry = entry; state.swReady = false;
     $('fileBox').hidden = false;
     const list = Object.keys(fmap);
-    $('fileList').textContent = `${list.length} ä¸ªæ–‡ä»¶ Â· å…¥å£ ${entry}` + (list.length > 8 ? `\n${list.slice(0, 8).join('\n')}\nâ€¦ç­‰` : '\n' + list.join('\n'));
-    /* ä¸Šä¼ åç«‹åˆ»å‡†å¤‡å¥½è™šæ‹Ÿç›®å½•ï¼šæ¼”ç¤ºå½•åˆ¶è¦åœ¨ç‚¹å‡»ç¬é—´åŒæ­¥æ‰“å¼€æ–°æ ‡ç­¾é¡µï¼Œ
-       ä¸èƒ½ç­‰åˆ°ç‚¹â€œå¼€å§‹â€æ—¶å† awaitï¼Œå¦åˆ™ä¼šä¸¢æ‰ç”¨æˆ·æ‰‹åŠ¿ã€‚ */
+    $('fileList').textContent = `${list.length} ¸öÎÄ¼ş ¡¤ Èë¿Ú ${entry}` + (list.length > 8 ? `\n${list.slice(0, 8).join('\n')}\n¡­µÈ` : '\n' + list.join('\n'));
+    /* ÉÏ´«ºóÁ¢¿Ì×¼±¸ºÃĞéÄâÄ¿Â¼£ºÑİÊ¾Â¼ÖÆÒªÔÚµã»÷Ë²¼äÍ¬²½´ò¿ªĞÂ±êÇ©Ò³£¬
+       ²»ÄÜµÈµ½µã¡°¿ªÊ¼¡±Ê±ÔÙ await£¬·ñÔò»á¶ªµôÓÃ»§ÊÖÊÆ¡£ */
     try {
       await setupVFS();
     } catch (e) {
       console.warn('[vfs]', e && e.message);
     }
-    setStatus(`å°±ç»ªï¼šå…¥å£ ${entry}ã€‚å¯å¼€å§‹å½•åˆ¶ã€‚` + (state.swReady ? '' : 'ï¼ˆè™šæ‹Ÿç›®å½•åˆå§‹åŒ–å¤±è´¥ï¼Œæ¼”ç¤ºå½•åˆ¶ä¸å¯ç”¨ï¼‰'), state.swReady ? 'ok' : 'warn');
-    $('btnStart').disabled = false;
+    setStatus(`¾ÍĞ÷£ºÈë¿Ú ${entry}¡£¿É¿ªÊ¼Â¼ÖÆ¡£` + (state.swReady ? '' : '£¨ĞéÄâÄ¿Â¼³õÊ¼»¯Ê§°Ü£¬ÑİÊ¾Â¼ÖÆ²»¿ÉÓÃ£©'), state.swReady ? 'ok' : 'warn');
+    setStartDisabled(false);
   } catch (e) {
-    setStatus('è§£æå¤±è´¥: ' + e.message, 'err');
+    setStatus('½âÎöÊ§°Ü: ' + e.message, 'err');
   }
 }
 

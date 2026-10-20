@@ -2,7 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>HTML to Video Studio - 上传 HTML 转视频</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -18,8 +20,8 @@
     <div class="dropzone" id="dropZone">
       <div class="dz-inner">
         <div class="dz-icon">⬆</div>
-        <div class="dz-title">拖入 HTML 文件（或 ZIP 包）</div>
-        <div class="dz-hint">支持单 .html 文件，或含资源文件的 .zip（自动解析 index.html）<br>也可点此选择文件</div>
+        <div class="dz-title">拖入 / 点选 HTML（或 ZIP 包）</div>
+        <div class="dz-hint">单 .html 文件，或含资源的 .zip（自动找 index.html）<br>手机上可直接从“文件”里选</div>
       </div>
       <input type="file" id="fileInput" accept=".html,.htm,.zip" hidden multiple>
     </div>
@@ -32,124 +34,7 @@
       </div>
     </div>
 
-    <fieldset class="form">
-      <legend>录制设置</legend>
-
-      <div class="row">
-        <label>渲染引擎</label>
-        <select id="optEngine" title="精确逐帧：动画按帧推进、固定帧率合成，动效完整但较慢；实时：快但可能掉帧、动画节奏受渲染速度影响">
-          <option value="precise" selected>精确逐帧（动效完整 · 慢）</option>
-          <option value="fast">实时录制（快 · 可能掉帧）</option>
-        </select>
-      </div>
-
-      <div class="row">
-        <label>录制模式</label>
-        <select id="optMode">
-          <option value="auto">自动检测（推荐）</option>
-          <option value="demo">演示录制（自己点击/游玩，录真实过程 · 游戏 / 复杂交互首选）</option>
-          <option value="live">动画 / 实时（视口内 CSS·JS 动效逐帧捕捉）</option>
-          <option value="scroll">滚动（整页真实滚动录制，滚动触发动效完整保留）</option>
-        </select>
-      </div>
-
-      <div class="row">
-        <label>演示录制音频</label>
-        <label class="check"><input type="checkbox" id="optAudio"> 同时录页面/系统声音（演示模式，浏览器会要求勾选“分享音频”）</label>
-      </div>
-
-      <div class="row">
-        <label>演示画面裁边</label>
-        <label class="check"><input type="checkbox" id="optDemoCrop" checked> 按输出比例居中裁剪，去掉浏览器地址栏 / 桌面 / 任务栏等杂边</label>
-      </div>
-
-      <div class="row">
-        <label>分辨率</label>
-        <select id="optSize">
-          <option value="1280x720">1280 × 720</option>
-          <option value="1920x1080">1920 × 1080（全高清）</option>
-          <option value="2560x1440">2560 × 1440（2K）</option>
-          <option value="3840x2160">3840 × 2160（4K，较慢）</option>
-          <option value="1024x768">1024 × 768</option>
-        </select>
-      </div>
-
-      <div class="row">
-        <label>帧率 (fps)</label>
-        <select id="optFps">
-          <option value="10">10（默认，均衡）</option>
-          <option value="5">5（低配 / DOM 逐帧）</option>
-          <option value="12">12</option>
-          <option value="15">15</option>
-          <option value="24">24（流畅）</option>
-          <option value="30">30</option>
-        </select>
-      </div>
-
-      <div class="row">
-        <label>时长控制</label>
-        <select id="optDuration">
-          <option value="auto">自动（滚动到底 / 检测播放结束表达式）</option>
-          <option value="fixed">固定时长（秒）</option>
-          <option value="manual">手动停止</option>
-        </select>
-        <input type="number" id="optDurationSec" value="10" min="1" max="3600" disabled>
-      </div>
-
-      <div class="row">
-        <label>滚动速度（px/s）</label>
-        <input type="number" id="optScrollSpeed" value="150" min="20" max="800" step="10" title="仅滚动模式生效；越大整片越快">
-      </div>
-
-      <div class="row">
-        <label>停止表达式（可选）</label>
-        <input type="text" id="optStopJs" placeholder="例：!document.body.classList.contains('playing')" title="iframe 内 evaluate，返回 true 时结束录制">
-      </div>
-
-      <div class="row">
-        <label>播放启动动作</label>
-        <input type="text" id="optClickSel" placeholder="加载后要点击的选择器，如 #btnPlay">
-      </div>
-
-      <div class="row">
-        <label>等待隐藏元素（可选）</label>
-        <input type="text" id="optWaitHidden" placeholder="等待消失的加载层，如 #loading">
-      </div>
-
-      <div class="row">
-        <label>启动等待（ms）</label>
-        <input type="number" id="optDelay" value="500" min="0" max="60000">
-      </div>
-
-      <div class="row">
-        <label>注入 JS（可选）</label>
-        <textarea id="optInjectJs" rows="2" placeholder="加载后执行的脚本，如隐藏开场遮罩：document.querySelector('#boot').style.display='none'"></textarea>
-      </div>
-
-      <div class="row">
-        <label>背景音乐（可选）</label>
-        <input type="file" id="optMusic" accept="audio/*">
-      </div>
-      <div class="row">
-        <label>音乐音量</label>
-        <input type="range" id="optMusicVol" min="0" max="100" value="70">
-      </div>
-
-      <div class="row">
-        <label>变速（倍速）</label>
-        <input type="number" id="optSpeed" value="1" min="0.25" max="4" step="0.25">
-      </div>
-
-      <div class="row">
-        <label>输出格式</label>
-        <select id="optFormat">
-          <option value="mp4">MP4（H.264，推荐）</option>
-          <option value="webm">WebM（无需转码，最快）</option>
-        </select>
-      </div>
-    </fieldset>
-
-    <div class="actions">
+    <div class="actions actions-top">
       <button class="btn btn-primary" id="btnStart" disabled>开始录制</button>
       <button class="btn" id="btnStop" disabled>停止</button>
       <button class="btn" id="btnDownload" disabled>下载视频</button>
@@ -157,6 +42,190 @@
 
     <div class="status" id="statusBar">等待上传 HTML…</div>
     <div class="progress" id="progressWrap" hidden><div class="progress-bar" id="progressBar"></div></div>
+
+    <form class="form" id="optForm" onsubmit="return false">
+      <details class="group" open>
+        <summary>基础设置</summary>
+
+        <div class="row">
+          <label for="optEngine">渲染引擎</label>
+          <select id="optEngine" title="精确逐帧：动画按帧推进、固定帧率合成，动效完整但较慢；实时：快但可能掉帧">
+            <option value="precise" selected>精确逐帧（动效完整 · 慢）</option>
+            <option value="fast">实时录制（快 · 可能掉帧）</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <label for="optMode">录制模式</label>
+          <select id="optMode">
+            <option value="auto">自动检测（推荐）</option>
+            <option value="demo">演示录制（自己点击/游玩，录真实过程）</option>
+            <option value="live">动画 / 实时（视口内动效逐帧捕捉）</option>
+            <option value="scroll">滚动（整页真实滚动录制）</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <label for="optSize">分辨率</label>
+          <select id="optSize">
+            <option value="1280x720">1280 × 720</option>
+            <option value="1920x1080">1920 × 1080（全高清）</option>
+            <option value="2560x1440">2560 × 1440（2K）</option>
+            <option value="3840x2160">3840 × 2160（4K，较慢）</option>
+            <option value="1024x768">1024 × 768</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <label for="optFps">帧率 (fps)</label>
+          <select id="optFps">
+            <option value="10">10（默认，均衡）</option>
+            <option value="5">5（低配 / DOM 逐帧）</option>
+            <option value="12">12</option>
+            <option value="15">15</option>
+            <option value="24">24（流畅）</option>
+            <option value="30">30</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <label for="optFormat">输出格式</label>
+          <select id="optFormat">
+            <option value="mp4">MP4（H.264，推荐）</option>
+            <option value="webm">WebM（无需转码，最快）</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <label for="optSpeed">变速（倍速）</label>
+          <input type="number" id="optSpeed" value="1" min="0.25" max="4" step="0.25" inputmode="decimal">
+        </div>
+      </details>
+
+      <details class="group">
+        <summary>时长与启动</summary>
+
+        <div class="row">
+          <label for="optDuration">时长控制</label>
+          <select id="optDuration">
+            <option value="auto">自动（滚动到底 / 检测播放结束表达式）</option>
+            <option value="fixed">固定时长（秒）</option>
+            <option value="manual">手动停止</option>
+          </select>
+          <input type="number" id="optDurationSec" value="10" min="1" max="3600" disabled inputmode="numeric">
+        </div>
+
+        <div class="row">
+          <label for="optScrollSpeed">滚动速度（px/s）</label>
+          <input type="number" id="optScrollSpeed" value="150" min="20" max="800" step="10" inputmode="numeric" title="仅滚动模式生效；越大整片越快">
+        </div>
+
+        <div class="row">
+          <label for="optStopJs">停止表达式</label>
+          <input type="text" id="optStopJs" placeholder="例：!document.body.classList.contains('playing')" title="iframe 内 evaluate，返回 true 时结束录制">
+        </div>
+
+        <div class="row">
+          <label for="optClickSel">播放启动动作</label>
+          <input type="text" id="optClickSel" placeholder="加载后要点击的选择器，如 #btnPlay">
+        </div>
+
+        <div class="row">
+          <label for="optWaitHidden">等待隐藏元素</label>
+          <input type="text" id="optWaitHidden" placeholder="等待消失的加载层，如 #loading">
+        </div>
+
+        <div class="row">
+          <label for="optDelay">启动等待（ms）</label>
+          <input type="number" id="optDelay" value="500" min="0" max="60000" inputmode="numeric">
+        </div>
+
+        <div class="row">
+          <label for="optInjectJs">注入 JS</label>
+          <textarea id="optInjectJs" rows="2" placeholder="如隐藏开场遮罩：document.querySelector('#boot').style.display='none'"></textarea>
+        </div>
+      </details>
+
+      <details class="group" open>
+        <summary>音频（解说 / 配音 / 音乐）</summary>
+
+        <div class="row">
+          <label for="optVoice">录解说</label>
+          <label class="check"><input type="checkbox" id="optVoice"> 演示录制时同步录麦克风解说（与画面同轨，天然同步）</label>
+        </div>
+
+        <div class="row">
+          <label for="optVoiceVol">解说音量</label>
+          <input type="range" id="optVoiceVol" min="0" max="150" value="100">
+          <div class="micwrap">
+            <span class="mictitle">输入电平</span>
+            <div class="micbar"><div class="micbar-fill" id="micLevel"></div></div>
+            <button class="btn btn-sm" id="btnMicMute" type="button" disabled>静音解说</button>
+          </div>
+        </div>
+
+        <div class="row">
+          <label for="optAudio">系统声音</label>
+          <label class="check"><input type="checkbox" id="optAudio"> 同时录页面/系统声音（浏览器会要求勾选“分享音频”）</label>
+        </div>
+
+        <div class="row">
+          <label for="optSysVol">系统声音音量</label>
+          <input type="range" id="optSysVol" min="0" max="150" value="80">
+        </div>
+
+        <div class="row">
+          <label for="optVoiceFile">导入配音</label>
+          <input type="file" id="optVoiceFile" accept="audio/*">
+          <div class="hint" id="voiceFileHint">可上传 mp3 / m4a / wav 解说音轨，成片时与原声、音乐混合</div>
+        </div>
+
+        <div class="row">
+          <label for="optVoiceDelay">配音延迟（秒）</label>
+          <input type="number" id="optVoiceDelay" value="0" min="0" max="600" step="0.1" inputmode="decimal" title="配音相对画面晚多少秒开始，用于对齐">
+        </div>
+
+        <div class="row">
+          <label for="optOrigVol">页面原声音量</label>
+          <input type="range" id="optOrigVol" min="0" max="150" value="100">
+        </div>
+
+        <div class="row">
+          <label for="optMusic">背景音乐</label>
+          <input type="file" id="optMusic" accept="audio/*">
+        </div>
+
+        <div class="row">
+          <label for="optMusicVol">音乐音量</label>
+          <input type="range" id="optMusicVol" min="0" max="100" value="70">
+        </div>
+      </details>
+
+      <details class="group">
+        <summary>演示录制画面</summary>
+        <div class="row">
+          <label for="optDemoCrop">画面裁边</label>
+          <label class="check"><input type="checkbox" id="optDemoCrop" checked> 按输出比例居中裁剪，去掉地址栏 / 桌面 / 任务栏等杂边</label>
+        </div>
+      </details>
+
+      <div class="actions actions-bottom">
+        <button class="btn btn-primary" id="btnStart2" disabled>开始录制</button>
+      </div>
+    </form>
+
+    <details class="group foot-group" id="helpBox">
+      <summary>说明与已知限制</summary>
+      <div class="foot-inner">
+        页面在你本地浏览器中渲染与录制（Canvas captureStream / html2canvas 逐帧 + ffmpeg.wasm 转码），文件不离开你的设备。上传 ZIP 时通过 Service Worker 提供同源虚拟目录，保证相对资源与 canvas 录制可用。
+        <br><b>自动 / 逐帧模式</b>：按帧推进 CSS / WAAPI / rAF 动画并烘焙状态，动效可完整保留；canvas、WebGL、video 这类实时像素源会在截图后按原位补绘，不再出现“整页正常、动画区一块黑”。
+        <br><b>演示录制模式</b>：适用于游戏、可点击 Demo、需要键盘鼠标操作或真实时钟的页面。工具会新开标签页并在授权后采集该标签页画面，点“进入全屏”后无地址栏播放，全程真实录下；结束后回到本页点“停止”。
+        <br><b>授权时选什么</b>：弹窗里选“这个标签页 / Chrome 标签页”，录到的是纯网页画面；误选“整个屏幕/窗口”时状态栏会明确提醒。
+        <br><b>解说音频</b>：勾选“录解说”后，麦克风解说与画面同轨录制，不需要后期对轨；也可导入现成配音，与原声、背景音乐按各自音量混合。
+        <br><b>时长为什么准了</b>：逐帧模式按“帧号 ÷ 帧率”推进时间轴，末尾统一按设定时长截断；实时模式按目标时刻排帧，不会因渲染慢而漂移。
+        <br>已知限制：逐帧模式下 html2canvas 不支持 backdrop-filter、iframe 内内容与 Shadow DOM；演示模式为标签页/屏幕级采集，会如实录下鼠标光标与浏览器界面。
+      </div>
+    </details>
   </section>
 
   <!-- 右侧：预览 -->
@@ -168,15 +237,6 @@
     </div>
   </section>
 </main>
-
-<footer class="foot">
-  说明：页面在你本地浏览器中渲染与录制（Canvas captureStream / html2canvas 逐帧 + ffmpeg.wasm 转码），文件不离开你的设备。ZIP 上传通过 Service Worker 提供同源虚拟目录，保证相对资源与 canvas 录制可用。
-  <br><b>自动 / 逐帧模式</b>：按帧推进 CSS / WAAPI / rAF 动画并烘焙状态，动效可完整保留；canvas、WebGL、video 这类实时像素源会在截图后按原位补绘，不再出现“整页正常、动画区一块黑”。
-  <br><b>演示录制模式</b>：适用于游戏、可点击 Demo、需要键盘鼠标操作或真实时钟的页面。工具会新开一个标签页并在你授权后采集该标签页画面；新标签页里会先出现一个“进入全屏”按钮，点它即可在没有地址栏 / 任务栏的状态下播放、点击、游玩，全程真实录下来，结束后回到本页点“停止”成片。
-  <br><b>授权时选什么</b>：弹窗里请选“这个标签页 / Chrome 标签页”，这样录到的是纯网页画面（天然全屏、无地址栏）；误选“整个屏幕”或“窗口”时工具会在状态栏明确提醒，成片会带桌面或标题栏。
-  <br><b>页面有“点击开始”遮罩</b>：自动模式下工具会识别铺满画面的开始遮罩，并自动把它的选择器填进「播放启动动作」，录制前先点它；若点了没反应，直接用演示录制自己点开后录。
-  <br>已知限制：逐帧模式下 html2canvas 不支持 backdrop-filter、iframe 内内容与 Shadow DOM；演示模式为标签页/屏幕级采集，会如实录下鼠标光标与浏览器界面（若选择整个屏幕）。
-</footer>
 
 <script src="vendor/html2canvas.min.js"></script>
 <script src="vendor/fflate.umd.js"></script>
