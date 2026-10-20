@@ -26,6 +26,7 @@ const state = {
   blackWarn: false,     // 产物疑似黑屏
   canvasWarn: '',       // canvas 空白/静止（可能被开始遮罩挡住）
   demoWarn: '',         // 演示录制：捕获源选择不当（整屏/窗口）
+  demoFocusBack: false, // 演示录制：待转码完成后把焦点拉回 Studio
 };
 
 /* ---------- 文件收集 ---------- */
@@ -789,6 +790,10 @@ function stopRecording() {
   if (state.stream) state.stream.getTracks().forEach(t => t.stop());
   if (state.demoStream) { state.demoStream.getTracks().forEach(t => t.stop()); state.demoStream = null; }
   /* 演示录制的页面标签页保留不动：用户可能还想继续玩，工具只负责停止采集 */
+  if (state.demoRecorded) {
+    /* 焦点回 Studio 放到转码完成后再做（见 finish），否则切窗口那几帧会被录进尾部 */
+    state.demoFocusBack = true;
+  }
   state.demoTab = null;
   setStatus('录制完成，处理中…');
 }
@@ -977,6 +982,11 @@ async function probeDuration() {
 function finish(ext) {
   setProgress(1, '完成');
   $('btnDownload').disabled = false;
+  /* 演示录制在演示页点的“结束”：录制已停，这时再把焦点拉回 Studio 才安全 */
+  if (state.demoFocusBack) {
+    state.demoFocusBack = false;
+    try { window.focus(); } catch (_) {}
+  }
   const base = `✅ 已生成 ${ext.toUpperCase()}（${fmtSize(state.resultBlob.size)}），点击下载。`;
   const extra = [];
   if (state.blackWarn) {
@@ -1077,6 +1087,10 @@ async function startDemoRecording() {
   attachPreview(stream);
   makeRecorder(stream, 12_000_000);
 
+  /* 授权完成后尽量把演示标签页提到前面：用户不必再手动切换，
+     录到的开头就不会是本 Studio 的界面。 */
+  try { if (state.demoTab && state.demoTab.focus) state.demoTab.focus(); } catch (_) {}
+
   const vt = stream.getVideoTracks()[0];
   if (vt) vt.addEventListener('ended', () => { if (state.recording) stopRecording(); });
 
@@ -1094,6 +1108,13 @@ async function startDemoRecording() {
   } else {
     state.demoWarn = '';
   }
+
+  /* 演示页里的“结束录制”胶囊会调这个函数：用户在新标签页直接结束，
+     不用切回 Studio，成片尾部不会闪进本页界面。 */
+  window.__MCV_stopDemo = () => { if (state.recording) stopRecording(); };
+  window.addEventListener('message', (e) => {
+    if (e && e.data && e.data.__mcv === 'stop-demo' && state.recording) stopRecording();
+  });
 
   setStatus('演示录制中：切到新标签页，先点页面上的“进入全屏”按钮，再正常播放 / 点击 / 游玩；结束后回到本页点“停止”。'
     + (state.demoWarn ? '\n' + state.demoWarn : ''), state.demoWarn ? 'warn' : 'ok');

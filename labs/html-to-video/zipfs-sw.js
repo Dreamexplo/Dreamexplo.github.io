@@ -104,6 +104,40 @@ const PATCH = `<script>(function(){
           } catch (e) { wrap.remove(); }
         });
       });
+
+      /* 常驻“结束录制”胶囊：直接在本标签页点结束，避免录到“切回 Studio 点停止”
+       * 那段别的窗口画面（以前成片尾部会闪一下 Studio 界面）。 */
+      document.addEventListener('DOMContentLoaded', function(){
+        var stop = document.createElement('button');
+        stop.id = '__mcv_stop';
+        stop.textContent = '结束录制 · 生成视频';
+        stop.setAttribute('style','position:fixed;right:16px;bottom:16px;z-index:2147483647;'
+          + 'font:600 13px/1 system-ui,sans-serif;padding:10px 16px;border:1px solid rgba(255,255,255,.35);'
+          + 'border-radius:999px;background:rgba(12,16,28,.72);color:#fff;cursor:pointer;opacity:.45;'
+          + 'backdrop-filter:blur(6px);transition:opacity .15s');
+        stop.addEventListener('mouseenter', function(){ stop.style.opacity = '1'; });
+        stop.addEventListener('mouseleave', function(){ stop.style.opacity = '.45'; });
+        stop.addEventListener('click', function(){
+          stop.textContent = '正在结束…';
+          stop.disabled = true;
+          var go = function(){
+            try {
+              if (window.opener && !window.opener.closed && window.opener.__MCV_stopDemo) {
+                window.opener.__MCV_stopDemo();
+              } else {
+                window.postMessage({ __mcv: 'stop-demo' }, '*');
+              }
+            } catch (e) {}
+          };
+          /* 先通知 Studio 停止采集，再退出全屏：顺序反了会把“退出全屏 + 切窗口”
+             那几帧录进成片尾部。 */
+          go();
+          if (document.fullscreenElement && document.exitFullscreen) {
+            setTimeout(function(){ try { document.exitFullscreen(); } catch (e) {} }, 260);
+          }
+        });
+        (document.body || document.documentElement).appendChild(stop);
+      });
     }
   } catch (e) {}
 })();<\/script>`;
