@@ -65,6 +65,8 @@ body {
 .form legend { padding: 0 8px; font-weight: 600; color: var(--accent); }
 .row { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 10px; }
 .row label { color: var(--muted); font-size: 13px; }
+.row label.check { display: flex; align-items: center; gap: 6px; color: var(--text, #dbe4f3); font-size: 12px; cursor: pointer; }
+.row label.check input { width: auto; }
 .row textarea { resize: vertical; }
 
 input[type=text], input[type=number], select, textarea {

@@ -47,16 +47,29 @@
         <label>录制模式</label>
         <select id="optMode">
           <option value="auto">自动检测（推荐）</option>
+          <option value="demo">演示录制（自己点击/游玩，录真实过程 · 游戏 / 复杂交互首选）</option>
           <option value="live">动画 / 实时（视口内 CSS·JS 动效逐帧捕捉）</option>
           <option value="scroll">滚动（整页真实滚动录制，滚动触发动效完整保留）</option>
         </select>
       </div>
 
       <div class="row">
+        <label>演示录制音频</label>
+        <label class="check"><input type="checkbox" id="optAudio"> 同时录页面/系统声音（演示模式，浏览器会要求勾选“分享音频”）</label>
+      </div>
+
+      <div class="row">
+        <label>演示画面裁边</label>
+        <label class="check"><input type="checkbox" id="optDemoCrop" checked> 按输出比例居中裁剪，去掉浏览器地址栏 / 桌面 / 任务栏等杂边</label>
+      </div>
+
+      <div class="row">
         <label>分辨率</label>
         <select id="optSize">
           <option value="1280x720">1280 × 720</option>
-          <option value="1920x1080">1920 × 1080</option>
+          <option value="1920x1080">1920 × 1080（全高清）</option>
+          <option value="2560x1440">2560 × 1440（2K）</option>
+          <option value="3840x2160">3840 × 2160（4K，较慢）</option>
           <option value="1024x768">1024 × 768</option>
         </select>
       </div>
@@ -158,7 +171,11 @@
 
 <footer class="foot">
   说明：页面在你本地浏览器中渲染与录制（Canvas captureStream / html2canvas 逐帧 + ffmpeg.wasm 转码），文件不离开你的设备。ZIP 上传通过 Service Worker 提供同源虚拟目录，保证相对资源与 canvas 录制可用。
-  <br>「精确逐帧」引擎按帧推进 CSS / WAAPI / rAF 动画并烘焙状态，动效可完整保留；长页面走真实滚动录制，滚动触发的 reveal、懒加载、视差也一并保留。已知限制：html2canvas 不支持 backdrop-filter、iframe 内内容、Shadow DOM 与跨域无 CORS 的图片；页面内音频不会被录制。
+  <br><b>自动 / 逐帧模式</b>：按帧推进 CSS / WAAPI / rAF 动画并烘焙状态，动效可完整保留；canvas、WebGL、video 这类实时像素源会在截图后按原位补绘，不再出现“整页正常、动画区一块黑”。
+  <br><b>演示录制模式</b>：适用于游戏、可点击 Demo、需要键盘鼠标操作或真实时钟的页面。工具会新开一个标签页并在你授权后采集该标签页画面；新标签页里会先出现一个“进入全屏”按钮，点它即可在没有地址栏 / 任务栏的状态下播放、点击、游玩，全程真实录下来，结束后回到本页点“停止”成片。
+  <br><b>授权时选什么</b>：弹窗里请选“这个标签页 / Chrome 标签页”，这样录到的是纯网页画面（天然全屏、无地址栏）；误选“整个屏幕”或“窗口”时工具会在状态栏明确提醒，成片会带桌面或标题栏。
+  <br><b>页面有“点击开始”遮罩</b>：自动模式下工具会识别铺满画面的开始遮罩，并自动把它的选择器填进「播放启动动作」，录制前先点它；若点了没反应，直接用演示录制自己点开后录。
+  <br>已知限制：逐帧模式下 html2canvas 不支持 backdrop-filter、iframe 内内容与 Shadow DOM；演示模式为标签页/屏幕级采集，会如实录下鼠标光标与浏览器界面（若选择整个屏幕）。
 </footer>
 
 <script src="vendor/html2canvas.min.js"></script>

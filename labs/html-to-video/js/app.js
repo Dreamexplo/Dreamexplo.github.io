@@ -20,6 +20,12 @@ const state = {
   resultBlob: null,     // 最终下载 blob
   ffmpeg: null,
   swReady: false,
+  demoTab: null,        // 演示录制：承载用户页面的新标签页
+  demoStream: null,     // 演示录制：捕获流
+  demoStart: 0,
+  blackWarn: false,     // 产物疑似黑屏
+  canvasWarn: '',       // canvas 空白/静止（可能被开始遮罩挡住）
+  demoWarn: '',         // 演示录制：捕获源选择不当（整屏/窗口）
 };
 
 /* ---------- 文件收集 ---------- */
@@ -151,6 +157,13 @@ async function evaluate(js) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+/* 目标输出尺寸：逐帧模式用 frame.W/H，演示模式按下拉框解析 */
+function outputSize() {
+  if (frame.W && frame.H) return [frame.W, frame.H];
+  const [w, h] = String($('optSize').value || '1280x720').split('x').map(Number);
+  return [w || 1280, h || 720];
+}
+
 async function prepareOutputCanvas() {
   frame.outCanvas = document.createElement('canvas');
   frame.outCanvas.width = frame.W; frame.outCanvas.height = frame.H;
@@ -159,7 +172,7 @@ async function prepareOutputCanvas() {
 
 /* 只有“铺满视口”的 canvas 才适合直录：小于 70% 视口的 canvas 往往只是背景层/图表，
    直录会丢掉整页 DOM 内容（此前 auto 模式误判为 canvas 页面的主要原因）。 */
-function pickCanvas() {
+function pickCanvas(minRatio) {
   if (!frame.doc) return null;
   const vw = frame.W, vh = frame.H;
   const win = frame.win || window;
@@ -173,7 +186,7 @@ function pickCanvas() {
     const area = w * h;
     if (area > bestArea) { bestArea = area; best = c; }
   }
-  if (best && bestArea >= vw * vh * 0.7) return best;
+  if (best && bestArea >= vw * vh * (minRatio || 0.7)) return best;
   return null;
 }
 
@@ -263,10 +276,10 @@ function bakeAnimated(sourceDoc, clonedDoc, targets) {
 /* 渲染一帧（带动画状态烘焙）
  * 注意：必须显式给出 width/height 裁剪区域，否则 html2canvas 会把整篇文档
  * （可能上万像素高）整体栅格化后缩放到视口，画面被纵向压扁。 */
-async function renderFrameCanvas(doc, vw, vh, scale, targets, scrollTop) {
+async function renderFrameCanvas(doc, vw, vh, scale, targets, scrollTop, repaint) {
   const target = doc.documentElement || doc.body;
   const sy = Math.max(0, scrollTop || 0);
-  return html2canvas(target, {
+  const out = await html2canvas(target, {
     scale,
     useCORS: true,
     allowTaint: false,
@@ -281,6 +294,102 @@ async function renderFrameCanvas(doc, vw, vh, scale, targets, scrollTop) {
     scrollY: sy,
     logging: false,
     onclone: (clonedDoc) => bakeAnimated(doc, clonedDoc, targets),
+  });
+  /* 补画 canvas / video：先让页面重绘一次，确保能读到 WebGL 的真实像素 */
+  try {
+    if (typeof repaint === 'function') await repaint();
+    else await repaintOnce(doc.defaultView || window);
+    const ctx = out.getContext('2d');
+    const n = paintLiveLayers(doc, ctx, { scale, vw, vh });
+    if (n) console.debug('[live-layer] 补绘', n, '个实时元素');
+  } catch (e) {
+    console.warn('[live-layer] 补绘失败', e && e.message);
+  }
+  return out;
+}
+
+/* ---------- 活层补绘：修复 html2canvas 无法渲染 canvas / WebGL / video 造成的黑块 ----------
+ * html2canvas 栅格化时，canvas、video 这类“实时像素源”只能拿到空白（尤其 WebGL 画面），
+ * 结果是页面其它部分正常、唯独动画/游戏画面一片黑。这里在截图完成后，把真实元素的
+ * 当前像素按其在页面中的位置、尺寸、叠放层级补画到帧上。 */
+function listLiveLayers(doc, vw, vh, extraOffset) {
+  const win = doc.defaultView || window;
+  const layers = [];
+  const order = new Map();
+  let seq = 0;
+  doc.querySelectorAll('*').forEach((el) => order.set(el, seq++));
+
+  const push = (el, kind) => {
+    let cs;
+    try { cs = win.getComputedStyle(el); } catch (e) { return; }
+    if (!cs || cs.display === 'none' || cs.visibility === 'hidden') return;
+    if (parseFloat(cs.opacity || '1') < 0.02) return;
+    if (kind === 'video' && el.readyState < 2) return;
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return;
+    /* 视口外跳过（整页模式下 vh 传整页高度，坐标系换成文档坐标） */
+    if (r.bottom + extraOffset < 0 || r.top + extraOffset > vh || r.right < 0 || r.left > vw) return;
+    const zi = parseInt(cs.zIndex, 10);
+    layers.push({
+      el, kind, cs,
+      x: r.left, y: r.top + extraOffset, w: r.width, h: r.height,
+      z: Number.isFinite(zi) ? zi : 0,
+      order: order.get(el) || 0,
+    });
+  };
+
+  doc.querySelectorAll('canvas').forEach((el) => push(el, 'canvas'));
+  doc.querySelectorAll('video').forEach((el) => push(el, 'video'));
+
+  /* 先按 z-index，再按 DOM 顺序，近似真实叠放 */
+  layers.sort((a, b) => (a.z - b.z) || (a.order - b.order));
+  return layers;
+}
+
+function paintLiveLayers(doc, ctx, opt) {
+  const { scale = 1, vw, vh, extraOffset = 0 } = opt;
+  let painted = 0;
+  for (const l of listLiveLayers(doc, vw, vh, extraOffset)) {
+    const dx = l.x * scale;
+    const dy = l.y * scale;
+    const dw = l.w * scale;
+    const dh = l.h * scale;
+    try {
+      const fit = l.cs.objectFit;
+      const nw = l.el.videoWidth || l.el.width || 0;
+      const nh = l.el.videoHeight || l.el.height || 0;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(dx, dy, dw, dh);
+      ctx.clip();
+      if (nw && nh && (fit === 'cover' || fit === 'contain') && l.kind === 'video') {
+        const k = fit === 'cover' ? Math.max(dw / nw, dh / nh) : Math.min(dw / nw, dh / nh);
+        const w2 = nw * k;
+        const h2 = nh * k;
+        ctx.drawImage(l.el, dx + (dw - w2) / 2, dy + (dh - h2) / 2, w2, h2);
+      } else {
+        ctx.drawImage(l.el, dx, dy, dw, dh);
+      }
+      ctx.restore();
+      painted++;
+    } catch (e) {
+      /* 跨域污染或元素已失效时跳过，不阻塞整帧 */
+      console.warn('[live-layer]', l.kind, e && e.message);
+    }
+  }
+  return painted;
+}
+
+/* 让页面重新绘制一次后再读取像素 —— WebGL 未开启 preserveDrawingBuffer 时，
+ * 只有在绘制后的同一任务内 drawImage 才能拿到真实画面，否则是一片空白。 */
+function repaintOnce(win) {
+  return new Promise((resolve) => {
+    let done = false;
+    const fire = () => { if (done) return; done = true; resolve(); };
+    try {
+      win.requestAnimationFrame(() => fire());
+    } catch (e) { fire(); return; }
+    setTimeout(fire, 160);
   });
 }
 
@@ -363,12 +472,12 @@ function mimeSupported(list) {
   return '';
 }
 
-function makeRecorder(stream) {
+function makeRecorder(stream, bitrate) {
   // 统一用 WebM 录制：各浏览器实现稳定、时长准确；
   // 需要 MP4 时由 ffmpeg.wasm 在本机转码（不上传云端）。避免 mp4 直录在部分环境静默 0 帧的问题。
   const mime = mimeSupported(['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']);
   const chunks = [];
-  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 6_000_000 } : undefined);
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: bitrate || 6_000_000 } : undefined);
   rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
   rec.onstart = () => { state.rawMime = rec.mimeType || mime || ''; };
   rec.onstop = () => {
@@ -382,12 +491,68 @@ function makeRecorder(stream) {
 }
 
 /* 三种录制器 */
+/* 采样 canvas 缩略图：判断是否空白 / 是否完全没变化。
+ * 很多游戏与动画页会先盖一层“点击开始”的遮罩，canvas 在点击前一直是空的，
+ * 直接录就会得到 0 字节或纯黑成片，这里提前识别并给出可操作的建议。 */
+function canvasHealth(canvas) {
+  try {
+    const s = 32;
+    const c = document.createElement('canvas');
+    c.width = s; c.height = s;
+    const cx = c.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(canvas, 0, 0, s, s);
+    const d = cx.getImageData(0, 0, s, s).data;
+    let solid = 0, sum = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 8) solid++;
+      sum += d[i] + d[i + 1] + d[i + 2] + d[i + 3];
+    }
+    return { blank: solid === 0, sig: `${sum}:${solid}` };
+  } catch (e) { return null; }
+}
+
+/* 找一个铺满视口的“开始/点击进入”遮罩层，返回可填进「播放启动动作」的选择器 */
+function findStartOverlay(win, doc, vw, vh) {
+  try {
+    const area = Math.max(1, vw * vh);
+    const list = doc.querySelectorAll('div,section,button,a,span');
+    for (let i = 0; i < list.length; i++) {
+      const el = list[i];
+      const r = el.getBoundingClientRect();
+      if (r.width * r.height < area * 0.8) continue;
+      const cs = win.getComputedStyle(el);
+      if (cs.position !== 'fixed' && cs.position !== 'absolute') continue;
+      if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) continue;
+      let sel = '';
+      if (el.id) sel = '#' + el.id;
+      else if (el.className && typeof el.className === 'string') sel = '.' + el.className.trim().split(/\s+/)[0];
+      return { sel, text: (el.textContent || '').trim().slice(0, 18) };
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
 async function startLiveCanvas(fps, onFrame) {
   const canvas = pickCanvas();
   if (!canvas) throw new Error('未找到足够大的 canvas，请改用“滚动”模式或“逐帧”模式');
   state.stream = canvas.captureStream(fps);
   state.recorder = makeRecorder(state.stream);
   attachPreview(state.stream);
+
+  /* 1.5s 后回看 canvas 是否还空着 / 一动不动 */
+  const h0 = canvasHealth(canvas);
+  setTimeout(() => {
+    if (!state.recording) return;
+    const h1 = canvasHealth(canvas);
+    if (!h1) return;
+    if (h1.blank || (h0 && h1.sig === h0.sig)) {
+      state.canvasWarn = state.canvasWarn
+        || 'canvas 画面一直是空白/静止：页面很可能停在“点击开始”的遮罩后面。'
+        + '请在「播放启动动作」里填遮罩的选择器后重录，或改用「演示录制」自己点开后录。';
+      setStatus('⚠ ' + state.canvasWarn, 'warn');
+    }
+  }, 1500);
+
   return () => { /* canvas 模式由时间/手动/表达式控制 */ };
 }
 
@@ -439,6 +604,7 @@ async function startDomFrame(fps, mode, opts = {}) {
     if (!state.recording) return;
     const started = performance.now();
     try {
+      /* 不传 repaint：走默认 repaintOnce 让页面真实重绘一帧，再补绘 canvas / video 像素 */
       const canvas = await renderFrameCanvas(doc, vw, vh, scale, targets);
       frame.outCtx.fillStyle = '#000';
       frame.outCtx.fillRect(0, 0, vw, vh);
@@ -533,7 +699,11 @@ async function startPrecise(fps, opts = {}) {
         });
       }
 
-      const canvas = await renderFrameCanvas(doc, vw, vh, scale, map, sy);
+      const canvas = await renderFrameCanvas(doc, vw, vh, scale, map, sy, () => {
+        /* 虚拟时钟下同步重绘一帧：页面 rAF 回调执行完立即补绘，能读到 WebGL 真实像素 */
+        clock.tick(t);
+        for (const a of anims) { try { a.currentTime = t; } catch (e) {} }
+      });
       frame.outCtx.fillStyle = '#000';
       frame.outCtx.fillRect(0, 0, vw, vh);
       frame.outCtx.drawImage(canvas, 0, 0, vw, vh);
@@ -591,6 +761,19 @@ async function snapshotFullPage(win, doc, vw) {
     y: 0,
     logging: false,
   });
+  /* 整页快照同样需要补画 canvas / video，否则滚动模式整片黑 */
+  try {
+    await repaintOnce(win);
+    const ctx = canvas.getContext('2d');
+    paintLiveLayers(doc, ctx, {
+      scale,
+      vw,
+      vh: logicalH,
+      extraOffset: win.scrollY || 0,
+    });
+  } catch (e) {
+    console.warn('[snapshot live-layer]', e && e.message);
+  }
   return { canvas, logicalH };
 }
 
@@ -604,6 +787,9 @@ function stopRecording() {
     state.recorder.stop();
   }
   if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+  if (state.demoStream) { state.demoStream.getTracks().forEach(t => t.stop()); state.demoStream = null; }
+  /* 演示录制的页面标签页保留不动：用户可能还想继续玩，工具只负责停止采集 */
+  state.demoTab = null;
   setStatus('录制完成，处理中…');
 }
 
@@ -663,6 +849,10 @@ async function postProcess() {
   }
   const speed = parseFloat($('optSpeed').value) || 1;
   const music = state.musicFile;
+  /* 演示录制是整屏/整标签页采集，画面里常带浏览器地址栏、桌面、任务栏。
+     勾选“演示画面裁边”时按输出比例居中裁剪再缩放，让成片只保留内容本身。 */
+  const [oW, oH] = outputSize();
+  const demoCrop = !!(state.demoRecorded && $('optDemoCrop') && $('optDemoCrop').checked);
   const wantFmt = $('optFormat').value;
   const rawMime = (state.rawMime || state.rawBlob.type || '').toLowerCase();
   const rawIsH264Mp4 = rawMime.includes('mp4') && (rawMime.includes('avc') || rawMime.includes('h264'));
@@ -670,7 +860,7 @@ async function postProcess() {
 
   // 需要 ffmpeg 的情形：要 MP4 但不是原生 H.264、或要 WebM 但原始是 MP4、或要变速、或要混音
   const toWebm = (wantFmt === 'webm' && rawIsMp4);
-  const needFfmpeg = (wantFmt === 'mp4' && !rawIsH264Mp4) || toWebm || speed !== 1 || !!music;
+  const needFfmpeg = (wantFmt === 'mp4' && !rawIsH264Mp4) || toWebm || speed !== 1 || !!music || demoCrop;
 
   if (!needFfmpeg) {
     state.resultBlob = state.rawBlob;
@@ -688,7 +878,14 @@ async function postProcess() {
     await ffmpeg.writeFile(bgmName, new Uint8Array(await music.arrayBuffer()));
     args.push('-i', bgmName);
   }
-  const vf = speed !== 1 ? `setpts=${(1 / speed).toFixed(4)}*PTS` : null;
+  const vfChain = [];
+  if (demoCrop) {
+    // 居中裁剪成目标比例（不改形变），再缩放到目标分辨率
+    vfChain.push(`crop=w=min(iw\\,ih*${oW}/${oH}):h=min(ih\\,iw*${oH}/${oW}):x=(iw-ow)/2:y=(ih-oh)/2`);
+    vfChain.push(`scale=${oW}:${oH}:flags=bicubic`);
+  }
+  if (speed !== 1) vfChain.push(`setpts=${(1 / speed).toFixed(4)}*PTS`);
+  const vf = vfChain.length ? vfChain.join(',') : null;
   const af = speed !== 1 && hasAudio ? atempoChain(speed) : null;
 
   const filterParts = [];
@@ -780,7 +977,14 @@ async function probeDuration() {
 function finish(ext) {
   setProgress(1, '完成');
   $('btnDownload').disabled = false;
-  setStatus(`✅ 已生成 ${ext.toUpperCase()}（${fmtSize(state.resultBlob.size)}），点击下载。`, 'ok');
+  const base = `✅ 已生成 ${ext.toUpperCase()}（${fmtSize(state.resultBlob.size)}），点击下载。`;
+  const extra = [];
+  if (state.blackWarn) {
+    extra.push('⚠️ 自检提示：成片中有大量纯黑画面，多半是 canvas / WebGL / iframe 等特殊渲染导致。请改用「演示录制」模式重录，可完整保留游戏与交互画面。');
+  }
+  if (state.canvasWarn) extra.push('⚠️ ' + state.canvasWarn);
+  if (extra.length) setStatus(base + '\n' + extra.join('\n'), 'warn');
+  else setStatus(base, 'ok');
 }
 
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(2) + ' MB' : (n / 1024).toFixed(1) + ' KB'; }
@@ -811,13 +1015,167 @@ function guessMime(p) {
   return map[ext] || 'application/octet-stream';
 }
 
+/* ---------- 演示录制 ----------
+ * 场景：游戏、可交互 Demo、需要键盘/鼠标输入或真实时钟的复杂页面。
+ * 逐帧引擎对这类页面无能为力（虚拟时钟会冻结游戏循环、输入无法产生），
+ * 因此改成：真正打开页面 → 采集标签页画面 → 用户亲手玩/演示 → 完成后转码。
+ * 好处：WebGL、canvas、iframe、音视频、键鼠交互全部原样保留，分辨率跟随真实窗口（可 F11 全屏）。 */
+async function startDemoRecording() {
+  if (!state.files || !state.entry) { setStatus('请先上传 HTML 文件', 'err'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    setStatus('当前浏览器不支持屏幕/标签页录制（需要 Chrome / Edge 桌面版）。', 'err');
+    return;
+  }
+  if (!state.swReady) { setStatus('虚拟目录尚未就绪，请稍候再点开始（或重新上传文件）。', 'err'); return; }
+
+  const fps = Math.max(24, parseInt($('optFps').value) || 30);
+  const withAudio = !!($('optAudio') && $('optAudio').checked);
+
+  /* 关键顺序：window.open 与 getDisplayMedia 必须处在同一个用户点击任务里，
+     否则弹窗被拦截、或捕获授权因“缺少用户手势”直接失败。 */
+  let tab = null;
+  try {
+    tab = window.open('./__vfs__' + state.entry + '?__mcv=demo', '_blank');
+  } catch (e) { tab = null; }
+  if (!tab) {
+    setStatus('新标签页被浏览器拦截：请允许本站弹出窗口后重试。', 'err');
+    return;
+  }
+  state.demoTab = tab;
+
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      /* 优先引导用户选“标签页”：这样录到的就是纯网页画面，天然就是全屏、没有地址栏。
+         排除当前 Studio 页，避免误选自己；允许录制中切换共享源。 */
+      video: {
+        frameRate: { ideal: fps, max: 60 },
+        displaySurface: 'browser',
+      },
+      audio: withAudio,
+      preferCurrentTab: false,
+      selfBrowserSurface: 'exclude',
+      surfaceSwitching: 'include',
+      systemAudio: 'exclude',
+    });
+  } catch (e) {
+    try { tab.close(); } catch (_) {}
+    state.demoTab = null;
+    setStatus('未获得录制授权（' + (e && e.message ? e.message : e) + '）。提示：在弹出的选择器里选刚打开的那个标签页。', 'err');
+    return;
+  }
+
+  state.recording = true;
+  state.demoStream = stream;
+  state.demoRecorded = true;
+  state.demoStart = performance.now();
+  $('btnStart').disabled = true;
+  $('btnStop').disabled = false;
+  $('btnDownload').disabled = true;
+  setProgress(0, '');
+
+  attachPreview(stream);
+  makeRecorder(stream, 12_000_000);
+
+  const vt = stream.getVideoTracks()[0];
+  if (vt) vt.addEventListener('ended', () => { if (state.recording) stopRecording(); });
+
+  /* 用户可能误选“整个屏幕”：录到的会带桌面和别的窗口，裁边也救不回来。
+     这里读 displaySurface 给一次明确提示，计时状态里一直挂着。 */
+  let surface = '';
+  try {
+    const vs = vt && vt.getSettings ? vt.getSettings() : {};
+    surface = vs.displaySurface || '';
+  } catch (_) {}
+  if (surface === 'monitor') {
+    state.demoWarn = '⚠ 你选的是“整个屏幕”，成片会包含桌面与其它窗口。想要干净的全屏网页画面，请停止后重来，在弹窗里改选那个标签页 / Chrome 标签页。';
+  } else if (surface === 'window') {
+    state.demoWarn = '提示：你选的是“窗口”，画面里会有浏览器标题栏。想要纯净全屏画面，可停止后改选那个标签页。';
+  } else {
+    state.demoWarn = '';
+  }
+
+  setStatus('演示录制中：切到新标签页，先点页面上的“进入全屏”按钮，再正常播放 / 点击 / 游玩；结束后回到本页点“停止”。'
+    + (state.demoWarn ? '\n' + state.demoWarn : ''), state.demoWarn ? 'warn' : 'ok');
+  state.timer = setInterval(() => {
+    const s = Math.round((performance.now() - state.demoStart) / 1000);
+    setStatus(`演示录制中 ${s}s：在新标签页全屏操作，结束后回到本页点“停止”。`
+      + (state.demoWarn ? '\n' + state.demoWarn : ''), state.demoWarn ? 'warn' : 'ok');
+  }, 1000);
+}
+
+/* ---------- 产物黑屏自检 ----------
+ * 录制/编码后抽若干帧统计暗像素比例：整片接近纯黑时明确告警并给出替代方案，
+ * 避免用户拿到一个“看起来成功、实际全黑”的视频。 */
+async function detectBlackFrames(blob) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const v = document.createElement('video');
+    let done = false;
+    const cleanup = (val) => {
+      if (done) return;
+      done = true;
+      try { URL.revokeObjectURL(url); } catch (_) {}
+      resolve(val);
+    };
+    setTimeout(() => cleanup(null), 8000);
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    v.src = url;
+    v.onerror = () => cleanup(null);
+    v.onloadedmetadata = async () => {
+      try {
+        const dur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
+        if (!dur) return cleanup(null);
+        const c = document.createElement('canvas');
+        c.width = 160; c.height = 90;
+        const ctx = c.getContext('2d');
+        const samples = 6;
+        let dark = 0, counted = 0;
+        for (let i = 0; i < samples; i++) {
+          const t = Math.min(dur - 0.05, dur * (i + 0.5) / samples);
+          await new Promise((res) => {
+            const onSeeked = () => { v.removeEventListener('seeked', onSeeked); res(); };
+            v.addEventListener('seeked', onSeeked);
+            setTimeout(res, 1200);
+            try { v.currentTime = Math.max(0, t); } catch (e) { res(); }
+          });
+          ctx.drawImage(v, 0, 0, c.width, c.height);
+          const d = ctx.getImageData(0, 0, c.width, c.height).data;
+          let sum = 0, n = 0;
+          for (let p = 0; p < d.length; p += 4) {
+            sum += (d[p] + d[p + 1] + d[p + 2]) / 3;
+            n++;
+          }
+          const mean = sum / Math.max(1, n);
+          if (mean < 12) dark++;
+          counted++;
+        }
+        cleanup({ darkRatio: counted ? dark / counted : 0, samples: counted });
+      } catch (e) { cleanup(null); }
+    };
+  });
+}
+
 /* ---------- 主流程 ---------- */
 async function start() {
   if (!state.files || !state.entry) { setStatus('请先上传 HTML 文件', 'err'); return; }
+
+  /* 演示录制必须在用户点击的同一任务里发起（getDisplayMedia 需要用户手势），
+     所以放在任何 await 之前，第一时间打开标签页并申请捕获。 */
+  if ($('optMode').value === 'demo') {
+    await startDemoRecording();
+    return;
+  }
+
   $('btnStart').disabled = true;
   $('btnStop').disabled = false;
   $('btnDownload').disabled = true;
   state.recording = true;
+  state.blackWarn = false;
+  state.canvasWarn = '';
+  state.demoRecorded = false;
 
   try {
     if (!state.swReady) await setupVFS();
@@ -826,6 +1184,15 @@ async function start() {
     await waitHidden($('optWaitHidden').value.trim());
     if ($('optInjectJs').value.trim()) {
       await evaluate($('optInjectJs').value);
+    }
+    /* 点“播放启动动作”之前先扫一眼：若页面被一层铺满视口的“点击开始”遮罩挡住，
+       自动把它的选择器填进启动动作，否则 canvas 直录会拿到 0 字节 / 全黑成片。 */
+    if (!($('optClickSel').value || '').trim()) {
+      const ovPre = findStartOverlay(frame.win, frame.doc, frame.W, frame.H);
+      if (ovPre && ovPre.sel) {
+        $('optClickSel').value = ovPre.sel;
+        console.info('[auto-click] 检测到开始遮罩', ovPre);
+      }
     }
     await clickSel($('optClickSel').value.trim());
     await sleep(parseInt($('optDelay').value) || 0);
@@ -840,7 +1207,8 @@ async function start() {
     setStatus('开始录制…');
 
     const engine = ($('optEngine') && $('optEngine').value) || 'precise';
-    const bigCanvas = pickCanvas();
+    const bigCanvas = pickCanvas();            // 铺满视口 → 可以直录
+    const anyCanvas = pickCanvas(0.12);        // 只要有一定面积的 canvas，就必须走视口逐帧 + 补绘
     const scrollable = (frame.doc.documentElement.scrollHeight > frame.H + 4);
     const motion = hasMotion(frame.doc);
 
@@ -849,14 +1217,53 @@ async function start() {
     if (issues.length) console.warn('[compat]', issues);
 
     let modeReal = mode;
+    let hint = '';
     if (modeReal === 'auto') {
-      if (bigCanvas && !hasDomText(frame.doc)) modeReal = 'canvas';
+      /* canvas 面积占比：游戏/动画页的 canvas 往往只占视口一部分（周围有 HUD、按钮、说明），
+         以前会被判成“整页滚动”，整页快照只能截一帧静态图，看起来就是黑屏/不动。
+         现在只要存在大 canvas 就走视口逐帧（逐帧时 canvas 会被真实补绘），保证画面是活的。 */
+      let canvasRatio = 0;
+      if (anyCanvas) {
+        const r = anyCanvas.getBoundingClientRect();
+        canvasRatio = (r.width * r.height) / Math.max(1, frame.W * frame.H);
+      }
+      if (bigCanvas && canvasRatio >= 0.7 && !hasDomText(frame.doc)) modeReal = 'canvas';
+      else if (anyCanvas && canvasRatio >= 0.12) modeReal = 'dom';
       else if (scrollable) modeReal = 'scroll';
       else modeReal = 'dom';
+      if (anyCanvas && modeReal !== 'canvas') {
+        hint = '检测到 canvas 动画区：已自动补绘真实画面；若页面需要点击/键盘操作，请改用「演示录制」模式。';
+      }
+      /* 页面注册了大量键鼠监听 → 典型游戏/交互 Demo，逐帧录制只会得到静止画面 */
+      let inputHits = 0;
+      try {
+        inputHits = (frame.win && frame.win.__MCV && frame.win.__MCV.input) || 0;
+      } catch (e) { /* 跨域访问限制忽略 */ }
+      if (inputHits >= 2) {
+        hint = (hint ? hint + '\n' : '')
+          + `这个页面注册了 ${inputHits} 处键鼠/触摸监听，属于交互型页面（游戏 / 可操作 Demo）：`
+          + '逐帧录制无法产生真实输入，建议改用「演示录制」，自己点着玩、全程真实录下来。';
+      }
+      /* 铺满视口的“点击开始”遮罩：直接录只会得到静止/空白画面 */
+      const ov = findStartOverlay(frame.win, frame.doc, frame.W, frame.H);
+      if (ov && ov.sel) {
+        const cur = ($('optClickSel').value || '').trim();
+        if (!cur) {
+          $('optClickSel').value = ov.sel;
+          hint = (hint ? hint + '\n' : '')
+            + `页面有一层"${ov.text || '开始'}…"遮罩铺满画面，已自动把「播放启动动作」填为 ${ov.sel}；`
+            + '录制时会先点它再开始。若点了没反应，改用「演示录制」自己点开再录。';
+        } else {
+          hint = (hint ? hint + '\n' : '')
+            + `页面有一层铺满画面的遮罩（${ov.sel}），如果录出来是静态画面，把「播放启动动作」改成它。`;
+        }
+      }
       const label = modeReal === 'canvas' ? '动画（canvas 直录）'
         : modeReal === 'scroll' ? '整页滚动' : '动画（视口内）';
       const engLabel = modeReal === 'canvas' ? '实时直录' : (engine === 'fast' ? '实时' : '精确逐帧');
-      setStatus(`自动判定：${label}｜引擎：${engLabel}` + (issues.length ? `\n兼容性提示：${issues.join('；')}` : ''), issues.length ? 'warn' : ''); 
+      setStatus(`自动判定：${label}｜引擎：${engLabel}`
+        + (issues.length ? `\n兼容性提示：${issues.join('；')}` : '')
+        + (hint ? `\n${hint}` : ''), (issues.length || hint) ? 'warn' : '');
     }
 
     if (engine === 'precise' && modeReal !== 'canvas') {
@@ -911,6 +1318,13 @@ async function finishPipeline() {
   if (!state.rawBlob) return;
   pipelineRunning = true;
   try {
+    clearInterval(state.timer);
+    /* 成片黑屏自检：只做提示，不阻塞产物 */
+    try {
+      const chk = await detectBlackFrames(state.rawBlob);
+      if (chk && chk.darkRatio >= 0.85) state.blackWarn = true;
+      console.debug('[black-check]', chk);
+    } catch (e) { console.warn('[black-check]', e && e.message); }
     await postProcess();
   } catch (e) {
     setStatus('处理失败: ' + (e.message || e), 'err');
@@ -954,6 +1368,31 @@ function initEvents() {
   $('optDuration').addEventListener('change', (e) => {
     $('optDurationSec').disabled = e.target.value !== 'fixed';
   });
+
+  /* 演示模式：不走逐帧引擎，把只对逐帧生效的设置置灰，避免误解 */
+  const syncModeUI = () => {
+    const demo = $('optMode').value === 'demo';
+    ['optEngine', 'optDuration', 'optClickSel', 'optWaitHidden', 'optDelay',
+      'optInjectJs', 'optStopJs', 'optScrollSpeed'].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = demo;
+    });
+    /* 分辨率决定了成片比例，演示模式照样要能选（裁边会按它对齐） */
+    $('optDurationSec').disabled = demo || $('optDuration').value !== 'fixed';
+    if ($('optDemoCrop')) {
+      $('optDemoCrop').disabled = !demo;
+      $('optDemoCrop').closest('.check').style.opacity = demo ? '1' : '0.45';
+    }
+    if ($('optAudio')) {
+      $('optAudio').disabled = !demo;
+      $('optAudio').closest('.check').style.opacity = demo ? '1' : '0.45';
+    }
+    if (demo) {
+      setStatus('演示录制：点“开始录制”会新开一个标签页并请求录制授权——在弹窗里选“这个标签页 / Chrome 标签页”，然后在新页面点“进入全屏”，再正常播放/游玩，结束回到本页点“停止”。', 'ok');
+    }
+  };
+  $('optMode').addEventListener('change', syncModeUI);
+  syncModeUI();
 }
 
 async function handleFiles(files) {
@@ -964,7 +1403,14 @@ async function handleFiles(files) {
     $('fileBox').hidden = false;
     const list = Object.keys(fmap);
     $('fileList').textContent = `${list.length} 个文件 · 入口 ${entry}` + (list.length > 8 ? `\n${list.slice(0, 8).join('\n')}\n…等` : '\n' + list.join('\n'));
-    setStatus(`就绪：入口 ${entry}。可开始录制。`, 'ok');
+    /* 上传后立刻准备好虚拟目录：演示录制要在点击瞬间同步打开新标签页，
+       不能等到点“开始”时再 await，否则会丢掉用户手势。 */
+    try {
+      await setupVFS();
+    } catch (e) {
+      console.warn('[vfs]', e && e.message);
+    }
+    setStatus(`就绪：入口 ${entry}。可开始录制。` + (state.swReady ? '' : '（虚拟目录初始化失败，演示录制不可用）'), state.swReady ? 'ok' : 'warn');
     $('btnStart').disabled = false;
   } catch (e) {
     setStatus('解析失败: ' + e.message, 'err');

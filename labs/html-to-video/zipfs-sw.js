@@ -40,9 +40,88 @@ self.addEventListener('fetch', (e) => {
     }
     if (!entry) return new Response('Not found: ' + p, { status: 404 });
     const type = entry.type || guessType(p);
+    /* 对 HTML 注入采集补丁：
+     * 1) WebGL 上下文强制 preserveDrawingBuffer=true —— 否则在 rAF 之外读取像素会得到空白，
+     *    表现为“动画/游戏画面偶尔整块漆黑”（某些帧有、某些帧没有）。
+     * 2) 暴露 window.__MCV 供外部在补绘前主动推进一帧。 */
+    if (/text\/html/i.test(type)) {
+      try {
+        const txt = await entry.text();
+        return new Response(injectPatch(txt), { headers: { 'Content-Type': type, 'Cache-Control': 'no-store' } });
+      } catch (err) { /* 退化：原样返回 */ }
+    }
     return new Response(entry, { headers: { 'Content-Type': type, 'Cache-Control': 'no-store' } });
   })());
 });
+
+const PATCH = `<script>(function(){
+  try {
+    var P = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function(type, opts){
+      try {
+        if (typeof type === 'string' && type.indexOf('webgl') === 0) {
+          opts = Object.assign({}, opts || {});
+          if (opts.preserveDrawingBuffer !== true) opts.preserveDrawingBuffer = true;
+          opts.premultipliedAlpha = false;
+        }
+      } catch (e) {}
+      return P.call(this, type, opts);
+    };
+    window.__MCV = { patched: true, input: 0 };
+    /* 统计页面注册的键鼠 / 触摸监听：游戏类页面通常一上来就监听键盘与指针，
+     * 逐帧引擎无法产生真实输入，可据此主动提示改用「演示录制」。 */
+    try {
+      var AEL = EventTarget.prototype.addEventListener;
+      EventTarget.prototype.addEventListener = function (t, fn, o) {
+        try {
+          if (typeof t === 'string' && /^(key|pointer|mouse|touch|click)/i.test(t)) window.__MCV.input++;
+        } catch (e) {}
+        return AEL.call(this, t, fn, o);
+      };
+    } catch (e) {}
+  } catch (e) {}
+  /* 演示录制专用：带 __mcv=demo 打开时，给一个“一键全屏”遮罩。
+   * 浏览器不允许脚本自动全屏，但用户点一下这个按钮就是合法手势，
+   * 切到全屏后录出来的画面不带地址栏/书签栏/任务栏。 */
+  try {
+    if (location.search.indexOf('__mcv') !== -1) {
+      document.addEventListener('DOMContentLoaded', function(){
+        var wrap = document.createElement('div');
+        wrap.setAttribute('style','position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(8,10,20,.92);font:16px/1.7 system-ui,sans-serif;color:#fff;text-align:center');
+        wrap.innerHTML = '<div style="padding:0 24px">'
+          + '<div style="font-size:24px;font-weight:700;margin-bottom:10px">进入全屏演示</div>'
+          + '<div style="opacity:.78;margin-bottom:20px;max-width:460px">点下面的按钮把页面切到全屏，录下来的画面就只剩内容本身，没有浏览器地址栏和任务栏。按 Esc 可随时退出。</div>'
+          + '<button id="__mcv_fs" style="font:inherit;font-weight:600;padding:12px 28px;border:0;border-radius:999px;background:#4f7cff;color:#fff;cursor:pointer">点击进入全屏</button>'
+          + '</div>';
+        (document.body || document.documentElement).appendChild(wrap);
+        var btn = wrap.querySelector('#__mcv_fs');
+        btn && btn.addEventListener('click', function(){
+          var el = document.documentElement;
+          try {
+            var p = el.requestFullscreen && el.requestFullscreen();
+            if (p && p.then) p.then(function(){ wrap.remove(); }).catch(function(){ wrap.remove(); });
+            else setTimeout(function(){ wrap.remove(); }, 200);
+          } catch (e) { wrap.remove(); }
+        });
+      });
+    }
+  } catch (e) {}
+})();<\/script>`;
+
+function injectPatch(html) {
+  if (html.indexOf('__MCV') !== -1) return html;
+  const m = html.match(/<head[^>]*>/i);
+  if (m) {
+    const i = html.indexOf(m[0]) + m[0].length;
+    return html.slice(0, i) + PATCH + html.slice(i);
+  }
+  const h = html.match(/<html[^>]*>/i);
+  if (h) {
+    const i = html.indexOf(h[0]) + h[0].length;
+    return html.slice(0, i) + PATCH + html.slice(i);
+  }
+  return PATCH + html;
+}
 
 function guessType(p) {
   const ext = p.split('.').pop().toLowerCase();
