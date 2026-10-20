@@ -157,13 +157,205 @@ async function prepareOutputCanvas() {
   frame.outCtx = frame.outCanvas.getContext('2d');
 }
 
+/* 只有“铺满视口”的 canvas 才适合直录：小于 70% 视口的 canvas 往往只是背景层/图表，
+   直录会丢掉整页 DOM 内容（此前 auto 模式误判为 canvas 页面的主要原因）。 */
 function pickCanvas() {
-  const canvases = frame.doc.querySelectorAll('canvas');
-  for (const c of canvases) {
-    const w = c.width || c.clientWidth, h = c.height || c.clientHeight;
-    if (w >= frame.W * 0.5 && h >= frame.H * 0.5) return c;
+  if (!frame.doc) return null;
+  const vw = frame.W, vh = frame.H;
+  const win = frame.win || window;
+  let best = null, bestArea = 0;
+  for (const c of frame.doc.querySelectorAll('canvas')) {
+    const cs = win.getComputedStyle(c);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity || '1') < 0.05) continue;
+    const r = c.getBoundingClientRect();
+    const w = Math.min(r.width, vw), h = Math.min(r.height, vh);
+    if (w <= 0 || h <= 0) continue;
+    const area = w * h;
+    if (area > bestArea) { bestArea = area; best = c; }
   }
-  return canvases[0] || null;
+  if (best && bestArea >= vw * vh * 0.7) return best;
+  return null;
+}
+
+/* canvas 之外是否还有可见 DOM 文案（标题/按钮等）。有则不能只录 canvas 层。 */
+function hasDomText(doc) {
+  const walker = doc.createTreeWalker(doc.body || doc.documentElement, NodeFilter.SHOW_TEXT);
+  let n = 0, txt = '';
+  while (walker.nextNode()) {
+    const t = walker.currentNode.nodeValue.trim();
+    if (!t) continue;
+    const p = walker.currentNode.parentElement;
+    if (!p) continue;
+    const tag = p.tagName;
+    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') continue;
+    const cs = (p.ownerDocument.defaultView || window).getComputedStyle(p);
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    txt += t; n++;
+    if (txt.length > 40) return true;
+  }
+  return false;
+}
+
+/* 页面是否存在时间轴动效（CSS animation / transition / WAAPI） */
+function hasMotion(doc) {
+  try { return (doc.getAnimations ? doc.getAnimations().length : 0) > 0; } catch (e) { return false; }
+}
+
+/* ---------- 保留动画当前视觉状态（关键修复） ----------
+ * html2canvas 会把文档克隆到离屏副本再绘制，克隆副本里的 CSS 动画/过渡会从头重放，
+ * 因此逐帧截到的永远是动画起始帧 —— 这就是“视频里没有动效”的根因。
+ * 这里在 onclone 里把源文档当前时刻的计算样式（transform/opacity/filter/...）写入克隆节点，
+ * 并停掉克隆副本的动画，保证每一帧截到的就是该时刻的真实画面。 */
+const BAKE_PROPS = [
+  'transform', 'transform-origin', 'transform-box', 'opacity', 'filter', 'backdrop-filter',
+  'box-shadow', 'background-color', 'background-position', 'border-radius',
+  'visibility', 'clip-path', 'translate', 'rotate', 'scale', 'color',
+  'width', 'height', 'left', 'top', 'right', 'bottom',
+];
+
+function tagAnimatedTargets(doc) {
+  const map = new Map();          // id -> 源元素
+  const anims = [];
+  try { anims.push(...(doc.getAnimations ? doc.getAnimations() : [])); } catch (e) {}
+  let idx = 0;
+  for (const a of anims) {
+    try {
+      const el = a.effect && a.effect.target;
+      if (!el || !el.setAttribute) continue;
+      if (!el.hasAttribute('data-mcv')) {
+        el.setAttribute('data-mcv', String(idx));
+        map.set(String(idx), el);
+        idx++;
+      }
+    } catch (e) {}
+  }
+  return { anims, map };
+}
+
+function collectBakeTargets(doc) {
+  const map = new Map();
+  doc.querySelectorAll('[data-mcv]').forEach(el => map.set(el.getAttribute('data-mcv'), el));
+  return map;
+}
+
+function bakeAnimated(sourceDoc, clonedDoc, targets) {
+  const nodes = clonedDoc.querySelectorAll('[data-mcv]');
+  if (!nodes.length) return;
+  const srcWin = sourceDoc.defaultView || window;
+  nodes.forEach(node => {
+    const src = targets.get(node.getAttribute('data-mcv'));
+    if (!src || !src.isConnected) return;
+    let cs;
+    try { cs = srcWin.getComputedStyle(src); } catch (e) { return; }
+    for (const prop of BAKE_PROPS) {
+      const v = cs.getPropertyValue(prop);
+      if (!v || v === 'auto' || v === 'none' || v === 'normal') continue;
+      try { node.style.setProperty(prop, v); } catch (e) {}
+    }
+    try {
+      node.style.setProperty('animation', 'none', 'important');
+      node.style.setProperty('transition', 'none', 'important');
+    } catch (e) {}
+    // 伪元素动画无法烘焙，直接静默隐藏动画层（避免重复绘制起点状态）
+  });
+}
+
+/* 渲染一帧（带动画状态烘焙）
+ * 注意：必须显式给出 width/height 裁剪区域，否则 html2canvas 会把整篇文档
+ * （可能上万像素高）整体栅格化后缩放到视口，画面被纵向压扁。 */
+async function renderFrameCanvas(doc, vw, vh, scale, targets, scrollTop) {
+  const target = doc.documentElement || doc.body;
+  const sy = Math.max(0, scrollTop || 0);
+  return html2canvas(target, {
+    scale,
+    useCORS: true,
+    allowTaint: false,
+    backgroundColor: '#000',
+    windowWidth: vw,
+    windowHeight: vh,
+    width: vw,
+    height: vh,
+    x: 0,
+    y: sy,
+    scrollX: 0,
+    scrollY: sy,
+    logging: false,
+    onclone: (clonedDoc) => bakeAnimated(doc, clonedDoc, targets),
+  });
+}
+
+function canvasToJpegBlob(canvas, q) {
+  return new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('帧编码失败')), 'image/jpeg', q);
+    } catch (e) { reject(e); }
+  });
+}
+
+/* 虚拟时钟：接管 iframe 内的 rAF / 时间源，让 JS 动画随“帧序号”推进而非真实时间，
+   这样即使一帧要渲染几百毫秒，输出视频的动画节奏也是准的、不丢帧。 */
+function installVirtualClock(win) {
+  const q = new Map();
+  let nid = 0;
+  const origNow = win.performance.now.bind(win.performance);
+  const origRAF = win.requestAnimationFrame;
+  const origCAF = win.cancelAnimationFrame;
+  const dateBase = win.Date.now();
+  win.__mcNow = 0;
+  win.requestAnimationFrame = (cb) => { q.set(++nid, cb); return nid; };
+  win.cancelAnimationFrame = (id) => { q.delete(id); };
+  try { win.performance.now = () => win.__mcNow; } catch (e) {}
+  try { win.Date.now = () => dateBase + win.__mcNow; } catch (e) {}
+  return {
+    tick(t) {
+      win.__mcNow = t;
+      const pending = Array.from(q.values());
+      q.clear();
+      for (const cb of pending) { try { cb(t); } catch (e) { console.warn('[page rAF]', e); } }
+    },
+    restore() {
+      try { win.requestAnimationFrame = origRAF; } catch (e) {}
+      try { win.cancelAnimationFrame = origCAF; } catch (e) {}
+      try { win.performance.now = origNow; } catch (e) {}
+    },
+  };
+}
+
+/* 逐帧渲染 → ffmpeg 图片序列编码，帧率恒定，与渲染耗时解耦 */
+async function encodeFramesToMp4(frames, fps, onProgress) {
+  const ffmpeg = await getFFmpeg();
+  const pad = (n) => String(n).padStart(5, '0');
+  for (let i = 0; i < frames.length; i++) {
+    await ffmpeg.writeFile('mc' + pad(i) + '.jpg', frames[i]);
+    if (i % 20 === 0) onProgress && onProgress(i / frames.length);
+  }
+  await ffmpeg.exec([
+    '-y', '-framerate', String(fps), '-i', 'mc%05d.jpg',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20',
+    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'mc_out.mp4',
+  ]);
+  const data = await ffmpeg.readFile('mc_out.mp4');
+  for (let i = 0; i < frames.length; i++) { try { await ffmpeg.deleteFile('mc' + pad(i) + '.jpg'); } catch (e) {} }
+  try { await ffmpeg.deleteFile('mc_out.mp4'); } catch (e) {}
+  return new Blob([data.buffer], { type: 'video/mp4' });
+}
+
+/* 兼容性预检：把逐帧引擎抓不到的内容提前告诉用户 */
+function scanCompat(doc) {
+  const issues = [];
+  const vids = doc.querySelectorAll('video').length;
+  if (vids) issues.push(`<video> × ${vids}（html2canvas 画不出视频画面）`);
+  const ifrs = doc.querySelectorAll('iframe').length;
+  if (ifrs) issues.push(`<iframe> × ${ifrs}（子文档内容不会被截取）`);
+  let ximg = 0;
+  doc.querySelectorAll('img').forEach(img => {
+    try {
+      const u = new URL(img.currentSrc || img.src, doc.baseURI);
+      if (u.protocol.startsWith('http') && u.origin !== location.origin && !img.crossOrigin) ximg++;
+    } catch (e) {}
+  });
+  if (ximg) issues.push(`跨域图片 × ${ximg}（缺 CORS 会空白）`);
+  return issues;
 }
 
 function mimeSupported(list) {
@@ -240,23 +432,14 @@ async function startDomFrame(fps, mode, opts = {}) {
     return () => {};
   }
 
-  /* 动画 / DOM 逐帧：每帧重新截取当前视口 */
+  /* 动画 / DOM 逐帧：每帧重新截取当前视口（带动画状态烘焙，避免克隆文档重放动画） */
+  const targets = collectBakeTargets(doc);
+  const scale = Math.min(1, 1600 / vw);
   const loop = async () => {
     if (!state.recording) return;
     const started = performance.now();
     try {
-      const target = doc.documentElement || doc.body;
-      const canvas = await html2canvas(target, {
-        scale: Math.min(1, 1280 / vw),
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: '#000',
-        windowWidth: vw,
-        windowHeight: vh,
-        x: 0,
-        y: 0,
-        logging: false,
-      });
+      const canvas = await renderFrameCanvas(doc, vw, vh, scale, targets);
       frame.outCtx.fillStyle = '#000';
       frame.outCtx.fillRect(0, 0, vw, vh);
       frame.outCtx.drawImage(canvas, 0, 0, vw, vh);
@@ -273,6 +456,119 @@ async function startDomFrame(fps, mode, opts = {}) {
   };
   loop();
   return () => {};
+}
+
+/* ---------- 精确逐帧引擎 ----------
+ * 与实时录制的区别：
+ * 1) 用虚拟时钟控制 CSS 动画 / rAF 动画，按“帧序号”推进，不依赖渲染速度；
+ * 2) 每帧烘焙动画状态后再截图，克隆文档不会从头重放；
+ * 3) 先存帧，最后用 ffmpeg 按固定帧率合成 —— 帧率恒定、时长精确、不丢帧。 */
+async function startPrecise(fps, opts = {}) {
+  const doc = frame.doc, win = frame.win;
+  if (!doc) throw new Error('页面未加载');
+  const vw = frame.W, vh = frame.H;
+  await prepareOutputCanvas();
+
+  // 预览：把渲染出的帧推到预览区
+  try {
+    state.previewStream = frame.outCanvas.captureStream(0);
+    state.previewTrack = state.previewStream.getVideoTracks()[0];
+    attachPreview(state.previewStream);
+  } catch (e) { /* 预览失败不影响录制 */ }
+
+  const { anims, map } = tagAnimatedTargets(doc);
+  anims.forEach(a => { try { a.pause(); } catch (e) {} });
+
+  // 计算总帧数
+  let total = 0;
+  const durMode = opts.durMode || 'auto';
+  const doScroll = !!opts.scroll;
+  const maxScroll = Math.max(0, (doc.documentElement.scrollHeight || 0) - vh);
+  const scrollSpeed = Math.max(20, opts.scrollSpeed || 150);
+  if (durMode === 'fixed') {
+    total = Math.max(1, Math.round((opts.fixedSec || 10) * fps));
+  } else if (doScroll) {
+    // 滚动模式：按滚动速度把整页走完（懒加载/视差/滚动触发动画都会真实发生）
+    total = Math.max(1, Math.ceil(maxScroll / scrollSpeed * fps));
+  } else if (durMode === 'auto' && !opts.stopJs) {
+    let maxMs = 0;
+    for (const a of anims) {
+      try {
+        const timing = a.effect.getComputedTiming();
+        if (Number.isFinite(timing.endTime)) maxMs = Math.max(maxMs, timing.endTime);
+      } catch (e) {}
+    }
+    total = Math.round(Math.max(4000, maxMs || 10000) / 1000 * fps);
+  } else if (durMode === 'manual') {
+    total = 0;   // 手动停止
+  }
+
+  const MAX_FRAMES = 1800;
+  let capped = false;
+  if (total > MAX_FRAMES) { total = MAX_FRAMES; capped = true; }
+
+  setStatus(`精确逐帧渲染中：${total ? total + ' 帧' : '手动停止'} @ ${fps}fps…` + (doScroll ? '（滚动整页）' : ''));
+  const clock = installVirtualClock(win);
+  const scale = Math.min(1, 1600 / vw);
+  const frames = [];
+  let i = 0;
+
+  try {
+    while (state.recording) {
+      if (total && i >= total) break;
+      const t = (i * 1000) / fps;
+
+      let sy = 0;
+      if (doScroll) {
+        sy = Math.min(maxScroll, (i / fps) * scrollSpeed);
+        try { win.scrollTo(0, sy); } catch (e) {}
+        await sleep(0);   // 让滚动触发的 IntersectionObserver / 懒加载执行
+      }
+
+      clock.tick(t);
+      for (const a of anims) { try { a.currentTime = t; } catch (e) {} }
+      if (i % 10 === 0) {
+        doc.querySelectorAll('video').forEach(v => {
+          try { v.pause(); if (v.readyState >= 1 && Number.isFinite(v.duration)) v.currentTime = Math.min(v.duration, t / 1000); } catch (e) {}
+        });
+      }
+
+      const canvas = await renderFrameCanvas(doc, vw, vh, scale, map, sy);
+      frame.outCtx.fillStyle = '#000';
+      frame.outCtx.fillRect(0, 0, vw, vh);
+      frame.outCtx.drawImage(canvas, 0, 0, vw, vh);
+      if (state.previewTrack) { try { state.previewTrack.requestFrame(); } catch (e) {} }
+
+      const blob = await canvasToJpegBlob(frame.outCanvas, 0.9);
+      frames.push(new Uint8Array(await blob.arrayBuffer()));
+      i++;
+
+      if (total) setProgress(0.05 + 0.7 * (i / total), `渲染第 ${i}/${total} 帧（${((i / total) * 100).toFixed(0)}%）`);
+      else setStatus(`渲染第 ${i} 帧…（点“停止”结束）`);
+
+      if (opts.stopJs && i % 10 === 0) {
+        try {
+          const done = await evaluate(`(function(){ try { return !!(${opts.stopJs}); } catch(e){ return false; } })()`);
+          if (done) break;
+        } catch (e) {}
+      }
+      if (i % 2 === 0) await sleep(0);
+    }
+  } finally {
+    clock.restore();
+  }
+
+  if (!frames.length) throw new Error('未渲染到任何帧（页面可能为空）');
+  if (capped) setStatus(`已达帧数上限 ${MAX_FRAMES}，视频被截断。请降低时长或帧率。`, 'warn');
+
+  setProgress(0.78, `编码 ${frames.length} 帧（ffmpeg.wasm，请稍候）…`);
+  const mp4 = await encodeFramesToMp4(frames, fps, (p) => {
+    setProgress(0.78 + 0.12 * p, `写入帧 ${(p * 100).toFixed(0)}%…`);
+  });
+  state.rawBlob = mp4;
+  state.rawMime = 'video/mp4;codecs=avc1';
+  if (state.previewTrack) { try { state.previewTrack.stop(); } catch (e) {} }
+  finishPipeline();
 }
 
 /* 整页快照：一次性渲染整篇文档，供滚动模式切片；超大页面自动降采样 */
@@ -372,8 +668,9 @@ async function postProcess() {
   const rawIsH264Mp4 = rawMime.includes('mp4') && (rawMime.includes('avc') || rawMime.includes('h264'));
   const rawIsMp4 = rawMime.includes('mp4');
 
-  // 需要 ffmpeg 的情形：要 MP4 但不是原生 H.264、或要变速、或要混音
-  const needFfmpeg = (wantFmt === 'mp4' && !rawIsH264Mp4) || speed !== 1 || !!music;
+  // 需要 ffmpeg 的情形：要 MP4 但不是原生 H.264、或要 WebM 但原始是 MP4、或要变速、或要混音
+  const toWebm = (wantFmt === 'webm' && rawIsMp4);
+  const needFfmpeg = (wantFmt === 'mp4' && !rawIsH264Mp4) || toWebm || speed !== 1 || !!music;
 
   if (!needFfmpeg) {
     state.resultBlob = state.rawBlob;
@@ -421,17 +718,22 @@ async function postProcess() {
     mapArgs.push('-map', '0:a?');
   }
   if (filterParts.length) args.push('-filter_complex', filterParts.join(';'));
-  args.push(...mapArgs, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-vsync', 'vfr');
-  if (music || af || hasAudio) args.push('-c:a', 'aac', '-b:a', '128k');
-  args.push('output.mp4');
+  if (toWebm) {
+    args.push(...mapArgs, '-c:v', 'libvpx', '-b:v', '2M', '-deadline', 'realtime', '-cpu-used', '5', '-pix_fmt', 'yuv420p');
+  } else {
+    args.push(...mapArgs, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-vsync', 'vfr');
+  }
+  if (music || af || hasAudio) args.push('-c:a', toWebm ? 'libvorbis' : 'aac', '-b:a', '128k');
+  const outName = toWebm ? 'output.webm' : 'output.mp4';
+  args.push(outName);
 
   try {
-    setProgress(0.4, '转码中（ffmpeg.wasm 单线程较慢，请耐心等待）…');
+    setProgress(0.85, '转码中（ffmpeg.wasm 单线程较慢，请耐心等待）…');
     await ffmpeg.exec(args);
     setProgress(0.95, '封装输出…');
-    const data = await ffmpeg.readFile('output.mp4');
-    state.resultBlob = new Blob([data.buffer], { type: 'video/mp4' });
-    finish('mp4');
+    const data = await ffmpeg.readFile(outName);
+    state.resultBlob = new Blob([data.buffer], { type: toWebm ? 'video/webm' : 'video/mp4' });
+    finish(toWebm ? 'webm' : 'mp4');
   } catch (e) {
     if (!music && speed === 1 && rawIsMp4) {
       // 转码失败但已有可直接播放的 MP4
@@ -537,39 +839,54 @@ async function start() {
 
     setStatus('开始录制…');
 
+    const engine = ($('optEngine') && $('optEngine').value) || 'precise';
+    const bigCanvas = pickCanvas();
+    const scrollable = (frame.doc.documentElement.scrollHeight > frame.H + 4);
+    const motion = hasMotion(frame.doc);
+
+    // 兼容性预检
+    const issues = scanCompat(frame.doc);
+    if (issues.length) console.warn('[compat]', issues);
+
     let modeReal = mode;
     if (modeReal === 'auto') {
-      const hasCanvas = !!pickCanvas();
-      const scrollable = (frame.doc.documentElement.scrollHeight > frame.H + 4);
-      modeReal = hasCanvas ? 'live' : (scrollable ? 'scroll' : 'live');
-      setStatus(`自动判定：${modeReal === 'live' ? (hasCanvas ? '动画(canvas 实时)' : '动画(逐帧)') : '滚动'} 模式`);
+      if (bigCanvas && !hasDomText(frame.doc)) modeReal = 'canvas';
+      else if (scrollable) modeReal = 'scroll';
+      else modeReal = 'dom';
+      const label = modeReal === 'canvas' ? '动画（canvas 直录）'
+        : modeReal === 'scroll' ? '整页滚动' : '动画（视口内）';
+      const engLabel = modeReal === 'canvas' ? '实时直录' : (engine === 'fast' ? '实时' : '精确逐帧');
+      setStatus(`自动判定：${label}｜引擎：${engLabel}` + (issues.length ? `\n兼容性提示：${issues.join('；')}` : ''), issues.length ? 'warn' : ''); 
     }
 
-    if (modeReal === 'live') {
-      // 优先 canvas captureStream；无 canvas 降级逐帧
-      if (pickCanvas()) {
-        await startLiveCanvas(fps);
-      } else {
-        await startDomFrame(fps, 'live', { durMode, fixedSec, scrollSpeed });
-      }
-    } else {
+    if (engine === 'precise' && modeReal !== 'canvas') {
+      // 精确逐帧：CSS/rAF 动画按帧推进 + 状态烘焙 + 固定帧率合成，动效完整不丢帧
+      await startPrecise(fps, { durMode, fixedSec, stopJs, scroll: modeReal === 'scroll', scrollSpeed });
+    } else if (modeReal === 'scroll') {
       await startDomFrame(fps, 'scroll', { durMode, fixedSec, scrollSpeed });
+    } else if (modeReal === 'canvas' && bigCanvas) {
+      await startLiveCanvas(fps);
+    } else {
+      await startDomFrame(fps, 'live', { durMode, fixedSec, scrollSpeed });
     }
 
-    // 停止条件
-    if (stopJs) {
-      state.stopPoll = setInterval(async () => {
-        try {
-          const done = await evaluate(`(function(){ try { return !!(${stopJs}); } catch(e){ return false; } })()`);
-          if (done) stopRecording();
-        } catch (_) {}
-      }, 500);
-    }
-    if (durMode === 'fixed') {
-      state.timer = setTimeout(stopRecording, fixedSec * 1000);
-    }
-    if (durMode === 'auto' && !stopJs && modeReal === 'live') {
-      setStatus('自动模式（动画）需要停止表达式或手动停止，已切换为手动停止。', 'warn');
+    // 精确引擎自行处理时长与停止表达式，无需外部计时
+    const selfTimed = (engine === 'precise' && modeReal !== 'canvas');
+    if (!selfTimed) {
+      if (stopJs) {
+        state.stopPoll = setInterval(async () => {
+          try {
+            const done = await evaluate(`(function(){ try { return !!(${stopJs}); } catch(e){ return false; } })()`);
+            if (done) stopRecording();
+          } catch (_) {}
+        }, 500);
+      }
+      if (durMode === 'fixed') {
+        state.timer = setTimeout(stopRecording, fixedSec * 1000);
+      }
+      if (durMode === 'auto' && !stopJs && modeReal !== 'scroll') {
+        setStatus('自动模式（动画）需要停止表达式或手动停止，已切换为手动停止。', 'warn');
+      }
     }
   } catch (e) {
     state.recording = false;
