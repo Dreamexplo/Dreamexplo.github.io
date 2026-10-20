@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>从训练神经网络到训练 Agent</title>
+<style>
+  :root{
+    --paper:#F3EFE6;
+    --paper-2:#EAE3D4;
+    --ink:#16140F;
+    --ink-2:#5C5649;
+    --ink-3:#8E8776;
+    --line:rgba(22,20,15,.14);
+    --line-2:rgba(22,20,15,.07);
+    --coral:#C2603C;
+    --coral-2:#E39B76;
+    --green:#37584C;
+    --mono:"Cascadia Mono","Consolas",monospace;
+    --sans:"Microsoft YaHei","Segoe UI",sans-serif;
+    --sans-l:"Microsoft YaHei Light","Microsoft YaHei",sans-serif;
+    --serif:"Noto Serif","Georgia","SimSun",serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0d0c0a;}
+  body{cursor:none;}
+  #stage{
+    position:absolute;left:50%;top:50%;width:1280px;height:720px;
+    transform:translate(-50%,-50%) scale(1);
+    transform-origin:center center;
+    background:var(--paper);
+    font-family:var(--sans);
+    color:var(--ink);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:geometricPrecision;
+  }
+  /* paper texture */
+  #grain{
+    position:absolute;inset:0;pointer-events:none;
+    background-image:
+      radial-gradient(circle at 18% 12%, rgba(194,96,60,.10), transparent 46%),
+      radial-gradient(circle at 86% 82%, rgba(55,88,76,.09), transparent 48%);
+    mix-blend-mode:multiply;
+  }
+  #vignette{
+    position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(22,20,15,.09) 100%);
+  }
+  #grid{
+    position:absolute;inset:0;pointer-events:none;opacity:.5;
+    background-image:linear-gradient(to right, var(--line-2) 1px, transparent 1px),
+                     linear-gradient(to bottom, var(--line-2) 1px, transparent 1px);
+    background-size:80px 80px;
+  }
+
+  /* chrome */
+  .chrome{position:absolute;z-index:60;font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);}
+  #chap{left:72px;top:44px;}
+  #chap b{color:var(--coral);font-weight:600;}
+  #brand{right:72px;top:44px;text-align:right;}
+  #brand span{color:var(--ink-2);}
+  #progress-wrap{position:absolute;left:72px;right:72px;bottom:40px;height:1px;background:var(--line);z-index:60;}
+  #progress{height:1px;width:0;background:var(--coral);}
+  #pageno{position:absolute;right:72px;bottom:26px;font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.18em;z-index:60;}
+
+  /* scenes */
+  .scene{position:absolute;inset:0;opacity:0;pointer-events:none;}
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--coral);}
+  h1,h2,h3,p{margin:0;}
+  .h2{font-family:var(--sans-l);font-weight:300;font-size:44px;line-height:1.24;letter-spacing:.01em;}
+  .h2 em{font-style:normal;color:var(--coral);}
+  .lead{font-size:17px;line-height:1.9;color:var(--ink-2);font-weight:300;}
+  .rule{height:1px;background:var(--line);width:100%;}
+  .mono{font-family:var(--mono);}
+
+  /* bullets */
+  .bullet{position:relative;padding-left:52px;margin-bottom:22px;}
+  .bullet .idx{position:absolute;left:0;top:3px;font-family:var(--mono);font-size:11px;color:var(--coral);letter-spacing:.1em;}
+  .bullet .t{font-size:19px;line-height:1.62;font-weight:400;}
+  .bullet .d{font-size:14px;line-height:1.75;color:var(--ink-3);margin-top:4px;font-weight:300;}
+
+  /* title */
+  #s0 .t-lines{position:absolute;left:72px;top:196px;}
+  #s0 h1{font-family:var(--sans-l);font-weight:200;font-size:72px;line-height:1.16;letter-spacing:.02em;}
+  #s0 h1 .thin{color:var(--ink-3);}
+  #s0 .sub{margin-top:26px;display:flex;align-items:center;gap:18px;}
+  #s0 .sub .bar{width:56px;height:1px;background:var(--coral);}
+  #s0 .sub .txt{font-family:var(--mono);font-size:13px;letter-spacing:.18em;color:var(--ink-2);}
+  #s0 .meta{position:absolute;left:72px;bottom:86px;display:flex;gap:44px;font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.14em;}
+  #s0 .meta b{display:block;color:var(--ink);font-weight:500;font-size:13px;margin-top:8px;letter-spacing:.06em;}
+  #s0 .idxmark{position:absolute;right:72px;top:180px;font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.2em;text-align:right;line-height:2;}
+  #s0 canvas{position:absolute;right:0;top:0;}
+
+  /* generic canvas holder */
+  .cv{position:absolute;}
+
+  /* chips / loop */
+  .chip{
+    display:inline-flex;align-items:center;gap:10px;
+    border:1px solid var(--line);border-radius:3px;
+    padding:9px 16px;font-family:var(--mono);font-size:12px;letter-spacing:.08em;
+    color:var(--ink-2);background:rgba(255,255,255,.32);
+  }
+  .chip.on{border-color:var(--coral);color:var(--coral);background:rgba(194,96,60,.07);}
+  .arrow{font-family:var(--mono);color:var(--ink-3);font-size:12px;}
+
+  /* formula box */
+  .fbox{
+    display:inline-block;border:1px solid var(--line);
+    background:rgba(255,255,255,.42);
+    padding:16px 22px;font-family:var(--mono);font-size:20px;letter-spacing:.02em;
+    border-radius:3px;
+  }
+  .fbox small{display:block;font-size:10px;letter-spacing:.16em;color:var(--ink-3);margin-top:9px;}
+  .cap{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--ink-3);text-transform:uppercase;}
+
+  /* token stream */
+  .tok{display:inline-block;padding:7px 13px;margin:0 5px 10px 0;border:1px solid var(--line);border-radius:2px;
+       font-family:var(--mono);font-size:15px;color:var(--ink-2);background:rgba(255,255,255,.35);}
+  .tok.hot{border-color:var(--coral);color:#fff;background:var(--coral);}
+  .tok.ghost{border-style:dashed;color:var(--ink-3);}
+  .barrow{display:flex;align-items:center;gap:12px;margin-bottom:14px;font-family:var(--mono);font-size:12px;color:var(--ink-2);}
+  .barrow .lb{width:76px;}
+  .barrow .track{flex:1;height:6px;background:rgba(22,20,15,.08);position:relative;}
+  .barrow .fill{position:absolute;left:0;top:0;height:6px;background:var(--coral);}
+  .barrow .vl{width:46px;text-align:right;color:var(--ink-3);}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="grid"></div>
+  <div id="grain"></div>
+  <div id="vignette"></div>
+
+  <div class="chrome" id="chap"><b id="chapno">00</b> &nbsp;/&nbsp; <span id="chaptitle">封面</span></div>
+  <div class="chrome" id="brand">Marvis <span>· Explainer</span></div>
+  <div id="progress-wrap"><div id="progress"></div></div>
+  <div id="pageno">01 / 08</div>
+
+  <!-- ============ S0 封面 ============ -->
+  <div class="scene" id="s0">
+    <canvas class="cv" id="cv0" width="1280" height="720" style="left:0;top:0;"></canvas>
+    <div class="t-lines">
+      <div class="kicker" data-a="0.5">参数 · 梯度 · 轨迹</div>
+      <h1 data-a="0.9">从训练神经网络<br><span class="thin">到训练</span> Agent</h1>
+      <div class="sub" data-a="1.7">
+        <div class="bar"></div>
+        <div class="txt">OPTIMIZATION, ONE LAYER AT A TIME</div>
+      </div>
+    </div>
+    <div class="meta" data-a="2.4">
+      <div>CHAPTERS<b>8 章 · 186 秒</b></div>
+      <div>PATH<b>参数 → 损失 → 偏好 → 轨迹</b></div>
+      <div>MODE<b>原理推演 · 无公式包装</b></div>
+    </div>
+    <div class="idxmark" data-a="2.9">FIG. 01<br>FROM θ TO τ</div>
+  </div>
+
+  <!-- ============ S1 神经网络 ============ -->
+  <div class="scene" id="s1">
+    <div style="position:absolute;left:72px;top:150px;width:520px;">
+      <div class="kicker" data-a="0.2">CHAPTER 01</div>
+      <h2 class="h2" style="margin-top:16px;" data-a="0.4">神经网络，<br>是一个<em>带参数的函数</em></h2>
+      <div class="rule" style="margin:30px 0 28px;width:430px;" data-a="0.7"></div>
+      <div class="bullet" data-a="1.1"><span class="idx">01</span>
+        <div class="t">神经元：加权求和，再过一次非线性</div>
+        <div class="d">y = σ(Σ wᵢxᵢ + b)　—　w、b 就是可学的数</div>
+      </div>
+      <div class="bullet" data-a="1.9"><span class="idx">02</span>
+        <div class="t">层层堆叠：简单单元拼出复杂函数</div>
+        <div class="d">深度带来的是组合能力，不是某种魔法</div>
+      </div>
+      <div class="bullet" data-a="2.7"><span class="idx">03</span>
+        <div class="t">所谓“模型”，就是这一堆参数 θ</div>
+        <div class="d">能力不在代码里，在几十亿个小数里</div>
+      </div>
+      <div style="margin-top:26px;" data-a="3.5">
+        <div class="fbox">f(x ; θ) → ŷ<small>FORWARD PASS　一次前向，就是一次推理</small></div>
+      </div>
+    </div>
+    <canvas class="cv" id="cv1" width="600" height="440" style="left:632px;top:150px;"></canvas>
+    <div class="cap" style="position:absolute;left:632px;top:606px;" data-a="3.2">FIG. 02　前向传播：信号逐层加权、激活</div>
+  </div>
+
+  <!-- ============ S2 训练 ============ -->
+  <div class="scene" id="s2">
+    <div style="position:absolute;left:72px;top:146px;width:560px;">
+      <div class="kicker" data-a="0.2">CHAPTER 02</div>
+      <h2 class="h2" style="margin-top:16px;" data-a="0.4">训练，就是<br>让<em>损失</em>一路变小</h2>
+      <div class="rule" style="margin:26px 0 24px;width:470px;" data-a="0.7"></div>
+      <div class="bullet" data-a="1.0"><span class="idx">→</span>
+        <div class="t">前向：把输入走一遍网络</div>
+      </div>
+      <div class="bullet" data-a="1.6"><span class="idx">→</span>
+        <div class="t">损失 L：衡量输出离答案有多远</div>
+      </div>
+      <div class="bullet" data-a="2.2"><span class="idx">←</span>
+        <div class="t">反向：链式法则算出每个参数的梯度</div>
+      </div>
+      <div class="bullet" data-a="2.8"><span class="idx">↺</span>
+        <div class="t">更新：沿负梯度挪一小步，然后重复</div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;" data-a="3.2">
+        <span class="chip" id="lc1">前向</span>
+        <span class="arrow">·</span>
+        <span class="chip" id="lc2">损失</span>
+        <span class="arrow">·</span>
+        <span class="chip" id="lc3">反向</span>
+        <span class="arrow">·</span>
+        <span class="chip" id="lc4">更新</span>
+      </div>
+      <div style="margin-top:18px;" data-a="3.8">
+        <div class="fbox">θ ← θ − η ∇L(θ)<small>GRADIENT DESCENT　η：学习率，决定一步走多远</small></div>
+      </div>
+    </div>
+    <canvas class="cv" id="cv2" width="500" height="440" style="left:690px;top:150px;"></canvas>
+    <div class="cap" style="position:absolute;left:690px;top:606px;" data-a="3.0">FIG. 03　损失曲面上的下降轨迹</div>
+    <div class="mono" id="lossval" style="position:absolute;left:1010px;top:170px;font-size:13px;color:var(--ink-2);opacity:0;">L = 2.94</div>
+  </div>
+
+  <!-- ============ S3 语言模型 ============ -->
+  <div class="scene" id="s3">
+    <div style="position:absolute;left:72px;top:148px;width:620px;">
+      <div class="kicker" data-a="0.2">CHAPTER 03</div>
+      <h2 class="h2" style="margin-top:16px;" data-a="0.4">语言模型：<br>把世界压进<em>下一个 token</em></h2>
+      <div class="rule" style="margin:26px 0 24px;width:540px;" data-a="0.7"></div>
+      <p class="lead" data-a="1.0" style="margin-bottom:20px;">语料切成一串 token，模型只做一件事：<br>给定前文，预测下一个会是什么。</p>
+      <div data-a="1.6" id="tokline">
+        <span class="tok">训练</span><span class="tok">一个</span><span class="tok">智能体</span><span class="tok">需要</span><span class="tok">大量</span><span class="tok">的</span><span class="tok hot" id="hotTok">轨迹</span>
+      </div>
+      <div data-a="2.2" style="margin-top:6px;">
+        <div class="barrow"><span class="lb">轨迹</span><span class="track"><span class="fill" id="b1" style="width:0"></span></span><span class="vl" id="v1">0.00</span></div>
+        <div class="barrow"><span class="lb">经验</span><span class="track"><span class="fill" id="b2" style="width:0;background:var(--ink-3)"></span></span><span class="vl" id="v2">0.00</span></div>
+        <div class="barrow"><span class="lb">数据</span><span class="track"><span class="fill" id="b3" style="width:0;background:var(--ink-3)"></span></span><span class="vl" id="v3">0.00</span></div>
+      </div>
+      <div data-a="3.0" style="margin-top:12px;font-size:14px;color:var(--ink-3);font-weight:300;line-height:1.8;">
+        答案不用人标：下一个 token 本身就是标签。<br>于是同一套损失函数，可以直接喂给互联网规模的数据。
+      </div>
+    </div>
+    <div style="position:absolute;left:760px;top:158px;width:450px;">
+      <div class="cap" data-a="1.9" style="margin-bottom:18px;">SELF-SUPERVISED　自监督</div>
+      <div class="rule" data-a="2.0" style="margin-bottom:26px;"></div>
+      <div data-a="2.2" style="font-family:var(--mono);font-size:12px;color:var(--ink-3);letter-spacing:.1em;">CORPUS</div>
+      <div data-a="2.35" style="font-family:var(--serif);font-size:30px;margin-top:8px;">3 × 10¹² <span style="font-size:14px;font-family:var(--sans);color:var(--ink-3);">tokens</span></div>
+      <div data-a="2.9" style="font-family:var(--mono);font-size:12px;color:var(--ink-3);letter-spacing:.1em;margin-top:26px;">LOSS</div>
+      <div data-a="3.05" style="font-family:var(--serif);font-size:30px;margin-top:8px;">− log p(token)</div>
+      <div data-a="3.7" style="margin-top:30px;padding-top:22px;border-top:1px solid var(--line);font-size:14px;line-height:1.9;color:var(--ink-2);font-weight:300;">
+        预测准确到一定程度，知识、语法、<br>甚至推理路径，就被压进了参数里。<br><span style="color:var(--coral);">这一步，仍然只是“训练神经网络”。</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ S4 对齐 ============ -->
+  <div class="scene" id="s4">
+    <div style="position:absolute;left:72px;top:146px;width:640px;">
+      <div class="kicker" data-a="0.2">CHAPTER 04</div>
+      <h2 class="h2" style="margin-top:16px;" data-a="0.4">对齐：从“会接话”<br>到<em>“会做事”</em></h2>
+      <div class="rule" style="margin:26px 0 26px;width:560px;" data-a="0.7"></div>
+      <div data-a="1.0" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span class="chip" id="c1">预训练</span><span class="arrow">▸</span>
+        <span class="chip" id="c2">监督微调 SFT</span><span class="arrow">▸</span>
+        <span class="chip" id="c3">偏好优化 RLHF</span>
+      </div>
+      <div data-a="1.8" style="margin-top:30px;">
+        <div class="bullet"><span class="idx">A</span>
+          <div class="t">SFT：拿高质量示范，教它“该怎么答”</div>
+          <div class="d">本质还是监督学习 —— 换了一批更好的标签</div>
+        </div>
+        <div class="bullet"><span class="idx">B</span>
+          <div class="t">偏好优化：人类比较两个回答，谁更好</div>
+          <div class="d">模型被推离“差答案”，靠近“好答案”</div>
+        </div>
+        <div class="bullet"><span class="idx">C</span>
+          <div class="t">目标变了：不是“像文本”，而是“对人有帮助”</div>
+        </div>
+      </div>
+    </div>
+    <div style="position:absolute;left:760px;top:172px;width:448px;border:1px solid var(--line);background:rgba(255,255,255,.34);padding:24px 24px 20px;">
+      <div class="cap" data-a="2.2">PROMPT</div>
+      <div data-a="2.3" style="font-size:15px;margin-top:8px;color:var(--ink-2);">“把这份日志里的报错找出来。”</div>
+      <div class="rule" style="margin:18px 0;"></div>
+      <div data-a="2.7" style="display:flex;justify-content:space-between;align-items:baseline;">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--ink-3);">回答 A　啰嗦、答非所问</span>
+        <span class="mono" style="font-size:12px;color:var(--ink-3);" id="scA">0.00</span>
+      </div>
+      <div data-a="3.1" style="display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--coral);">回答 B　直接给出定位</span>
+        <span class="mono" style="font-size:14px;color:var(--coral);" id="scB">0.00</span>
+      </div>
+      <div class="rule" style="margin:18px 0;"></div>
+      <div data-a="3.7" style="font-size:13px;line-height:1.85;color:var(--ink-3);font-weight:300;">
+        奖励模型把“人更喜欢哪个”<br>变成一个可以优化的分数。
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ S5 Agent ============ -->
+  <div class="scene" id="s5">
+    <div style="position:absolute;left:72px;top:150px;width:520px;">
+      <div class="kicker" data-a="0.2">CHAPTER 05</div>
+      <h2 class="h2" style="margin-top:16px;" data-a="0.4">Agent：<br>模型多了<em>三样东西</em></h2>
+      <div class="rule" style="margin:26px 0 26px;width:440px;" data-a="0.7"></div>
+      <div class="bullet" data-a="1.1"><span class="idx">01</span>
+        <div class="t">工具</div>
+        <div class="d">搜索、代码执行、API —— 输出可以改变外部世界</div>
+      </div>
+      <div class="bullet" data-a="1.8"><span class="idx">02</span>
+        <div class="t">环境</div>
+        <div class="d">文件、浏览器、真实的业务系统</div>
+      </div>
+      <div class="bullet" data-a="2.5"><span class="idx">03</span>
+        <div class="t">循环</div>
+        <div class="d">行动之后会看到反馈，于是要再想一次</div>
+      </div>
+      <div data-a="3.3" style="margin-top:20px;padding:16px 20px;border-left:2px solid var(--coral);background:rgba(194,96,60,.05);">
+        <div style="font-size:16px;line-height:1.8;">输出不再是一个 token，<br>而是一串动作：<span class="mono" style="font-size:15px;">τ = (s₀,a₀,s₁,a₁,…)</span></div>
+      </div>
+    </div>
+    <canvas class="cv" id="cv5" width="560" height="470" style="left:660px;top:126px;"></canvas>
+    <div class="cap" style="position:absolute;left:660px;top:606px;" data-a="3.0">FIG. 04　观察 → 思考 → 行动：一个闭环</div>
+  </div>
+
+  <!-- ============ S6 训练 Agent ============ -->
+  <div class="scene" id="s6">
+    <div style="position:absolute;left:72px;top:140px;width:1140px;">
+      <div class="kicker" data-a="0.2">CHAPTER 06</div>
+      <h2 class="h2" style="margin-top:14px;font-size:42px;" data-a="0.4">训练 Agent：优化<em>整条轨迹</em>，而不是单个 token</h2>
+      <div class="rule" style="margin:24px 0 30px;" data-a="0.7"></div>
+      <div style="display:flex;gap:26px;">
+        <div data-a="1.0" style="flex:1;border-top:2px solid var(--ink);padding-top:18px;">
+          <div class="mono" style="font-size:11px;letter-spacing:.16em;color:var(--coral);">① IMITATE</div>
+          <div style="font-size:19px;margin-top:10px;">先模仿</div>
+          <div style="font-size:14px;line-height:1.85;color:var(--ink-3);margin-top:10px;font-weight:300;">
+            收集人类或更强模型的成功轨迹，<br>按 token 做监督微调。<br>
+            <span style="color:var(--ink-2);">起点高，但上限 = 示范者。</span>
+          </div>
+        </div>
+        <div data-a="1.8" style="flex:1;border-top:2px solid var(--ink);padding-top:18px;">
+          <div class="mono" style="font-size:11px;letter-spacing:.16em;color:var(--coral);">② EXPLORE</div>
+          <div style="font-size:19px;margin-top:10px;">再试错</div>
+          <div style="font-size:14px;line-height:1.85;color:var(--ink-3);margin-top:10px;font-weight:300;">
+            在能自动判定成败的环境里反复 rollout，<br>用最终结果当奖励（RLVR）。<br>
+            <span style="color:var(--ink-2);">答案对错可验证，就不需要人来打分。</span>
+          </div>
+        </div>
+        <div data-a="2.6" style="flex:1;border-top:2px solid var(--ink);padding-top:18px;">
+          <div class="mono" style="font-size:11px;letter-spacing:.16em;color:var(--coral);">③ SCALE</div>
+          <div style="font-size:19px;margin-top:10px;">然后扩环境</div>
+          <div style="font-size:14px;line-height:1.85;color:var(--ink-3);margin-top:10px;font-weight:300;">
+            任务越多样、反馈越及时，<br>能学到的行为就越多。<br>
+            <span style="color:var(--ink-2);">环境，成了新的训练数据。</span>
+          </div>
+        </div>
+      </div>
+      <div data-a="3.6" style="margin-top:38px;display:flex;align-items:center;gap:16px;">
+        <span class="mono" style="font-size:11px;letter-spacing:.16em;color:var(--ink-3);">SHIFT</span>
+        <span style="font-size:17px;color:var(--ink-2);">训练信号，从「每个 token 的似然」变成「整条轨迹的回报」</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ S7 信用分配 ============ -->
+  <div class="scene" id="s7">
+    <div style="position:absolute;left:72px;top:140px;width:520px;">
+      <div class="kicker" data-a="0.2">CHAPTER 07</div>
+      <h2 class="h2" style="margin-top:14px;font-size:42px;" data-a="0.4">奖励只在最后出现，<br>该<em>记在哪一步</em>？</h2>
+      <div class="rule" style="margin:24px 0 24px;width:440px;" data-a="0.7"></div>
+      <p class="lead" data-a="1.0">一条轨迹有几十步，但终点只给一个字：成功，或失败。这就是信用分配问题。</p>
+      <div class="bullet" data-a="1.8"><span class="idx">A</span>
+        <div class="t">同一任务多跑几次，取平均分当基线</div>
+      </div>
+      <div class="bullet" data-a="2.4"><span class="idx">B</span>
+        <div class="t">高于均值的轨迹，提高它的概率</div>
+      </div>
+      <div class="bullet" data-a="3.0"><span class="idx">C</span>
+        <div class="t">低于均值的轨迹，压低它的概率</div>
+      </div>
+      <div style="margin-top:22px;" data-a="3.7">
+        <div class="fbox" style="font-size:18px;">A = R(τ) − baseline<small>ADVANTAGE　把稀疏的结果，摊回每一步决策</small></div>
+      </div>
+    </div>
+    <canvas class="cv" id="cv7" width="640" height="420" style="left:610px;top:160px;"></canvas>
+    <div class="cap" style="position:absolute;left:610px;top:606px;" data-a="3.2">FIG. 05　轨迹上的逐步优势：越宽的箭头，改动越大</div>
+  </div>
+
+  <!-- ============ S8 收束 ============ -->
+  <div class="scene" id="s8">
+    <div style="position:absolute;left:72px;top:150px;width:1136px;">
+      <div class="kicker" data-a="0.2">CHAPTER 08</div>
+      <h2 class="h2" style="margin-top:16px;font-size:46px;line-height:1.35;" data-a="0.4">
+        神经网络学的是<b style="font-weight:400;color:var(--coral);">函数</b>，<br>
+        Agent 学的是<b style="font-weight:400;color:var(--coral);">策略</b>。
+      </h2>
+      <div class="rule" style="margin:32px 0 30px;" data-a="0.9"></div>
+      <div style="display:flex;align-items:flex-end;gap:0;" data-a="1.3">
+        <div style="flex:1;">
+          <div class="mono" style="font-size:10px;letter-spacing:.16em;color:var(--ink-3);">GRANULARITY OF ONE "ATTEMPT"</div>
+          <div style="display:flex;align-items:center;gap:18px;margin-top:16px;">
+            <div><div style="font-size:13px;color:var(--ink-3);">一次前向</div><div style="font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:6px;">forward</div></div>
+            <span class="arrow">→</span>
+            <div><div style="font-size:13px;color:var(--ink-3);">一个 token</div><div style="font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:6px;">next-token</div></div>
+            <span class="arrow">→</span>
+            <div><div style="font-size:13px;color:var(--ink-3);">一轮回答</div><div style="font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:6px;">response</div></div>
+            <span class="arrow">→</span>
+            <div><div style="font-size:13px;color:var(--coral);">一条轨迹</div><div style="font-family:var(--mono);font-size:11px;color:var(--coral);margin-top:6px;">trajectory</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="lead" data-a="2.4" style="margin-top:38px;max-width:860px;">
+        参数更新的数学几乎没变：还是前向、损失、反向、更新。<br>
+        变的是——一次“尝试”的尺度，从一次计算，变成了与世界的多轮交互。
+      </p>
+    </div>
+    <div class="mono" data-a="3.2" style="position:absolute;left:72px;bottom:84px;font-size:11px;letter-spacing:.18em;color:var(--ink-3);">END OF EXPLAINER　·　θ → L → preference → τ</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const DURATION = 186;
+  window.MARVIS_DURATION = DURATION;
+
+  const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+  const easeOut=t=>1-Math.pow(1-t,3);
+  const easeInOut=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const TAU=Math.PI*2;
+
+  /* ---------- scene table ---------- */
+  const SCENES=[
+    {id:'s0', a:0,    b:9.0,  chap:'00', name:'封面',        page:'— / 08'},
+    {id:'s1', a:9.0,  b:32.0, chap:'01', name:'神经网络',    page:'01 / 08'},
+    {id:'s2', a:32.0, b:56.0, chap:'02', name:'训练',        page:'02 / 08'},
+    {id:'s3', a:56.0, b:82.0, chap:'03', name:'语言模型',    page:'03 / 08'},
+    {id:'s4', a:82.0, b:106.0,chap:'04', name:'对齐',        page:'04 / 08'},
+    {id:'s5', a:106.0,b:132.0,chap:'05', name:'Agent',       page:'05 / 08'},
+    {id:'s6', a:132.0,b:158.0,chap:'06', name:'训练 Agent',  page:'06 / 08'},
+    {id:'s7', a:158.0,b:172.0,chap:'07', name:'信用分配',    page:'07 / 08'},
+    {id:'s8', a:172.0,b:186.0,chap:'08', name:'收束',        page:'08 / 08'}
+  ];
+
+  const $=id=>document.getElementById(id);
+  const sceneEls = SCENES.map(s=>({s, el:$(s.id)}));
+
+  /* ---------- reveal registry ---------- */
+  const anims=[];
+  SCENES.forEach(sc=>{
+    const el=$ (sc.id);
+    el.querySelectorAll('[data-a]').forEach(node=>{
+      const d=parseFloat(node.getAttribute('data-a'));
+      anims.push({node, at: sc.a+d, dur:0.75, dy:16});
+    });
+  });
+
+  const chapNo=$('chapno'), chapTitle=$('chaptitle'), pageNo=$('pageno'), prog=$('progress');
+
+  /* ================= canvases ================= */
+  const cv0=$('cv0'), ctx0=cv0.getContext('2d');
+  const cv1=$('cv1'), ctx1=cv1.getContext('2d');
+  const cv2=$('cv2'), ctx2=cv2.getContext('2d');
+  const cv5=$('cv5'), ctx5=cv5.getContext('2d');
+  const cv7=$('cv7'), ctx7=cv7.getContext('2d');
+  const DPR=1;
+
+  const INK='#16140F', CORAL='#C2603C', GREY='rgba(22,20,15,.14)', PAPER='#F3EFE6';
+
+  /* --- S0: faint orbital lines --- */
+  function draw0(t){
+    const W=1280,H=720; ctx0.clearRect(0,0,W,H);
+    const cx=985, cy=330;
+    for(let i=0;i<5;i++){
+      const r=120+i*88, ph=t*0.22+i*0.5;
+      ctx0.beginPath(); ctx0.strokeStyle='rgba(22,20,15,'+(0.085-i*0.012)+')';
+      ctx0.lineWidth=1;
+      ctx0.ellipse(cx,cy,r,r*0.62,0.42+Math.sin(ph*0.3)*0.06,0,TAU); ctx0.stroke();
+    }
+    for(let i=0;i<3;i++){
+      const ph=(t*0.16+i*0.33)%1, r=120+ph*380;
+      ctx0.beginPath(); ctx0.strokeStyle='rgba(194,96,60,'+(0.30*(1-ph))+')';
+      ctx0.lineWidth=1.2;
+      ctx0.ellipse(cx,cy,r,r*0.62,0.42,0,TAU); ctx0.stroke();
+    }
+    const p=(t*0.5)%1;
+    for(let i=0;i<26;i++){
+      const a=i/26*TAU + t*0.1;
+      const rr=140+((i*37)%330);
+      const x=cx+Math.cos(a)*rr, y=cy+Math.sin(a)*rr*0.62;
+      ctx0.beginPath(); ctx0.fillStyle='rgba(22,20,15,'+(0.06+0.05*Math.sin(t*1.4+i))+')';
+      ctx0.arc(x,y,1.4,0,TAU); ctx0.fill();
+    }
+    // core
+    ctx0.beginPath(); ctx0.fillStyle='rgba(194,96,60,.14)'; ctx0.arc(cx,cy,46,0,TAU); ctx0.fill();
+    ctx0.beginPath(); ctx0.fillStyle=PAPER; ctx0.arc(cx,cy,10+Math.sin(t*2)*1.6,0,TAU); ctx0.fill();
+    ctx0.beginPath(); ctx0.strokeStyle=CORAL; ctx0.lineWidth=1.4; ctx0.arc(cx,cy,10+Math.sin(t*2)*1.6,0,TAU); ctx0.stroke();
+  }
+
+  /* --- S1: network --- */
+  const LAYERS=[4,6,6,3];
+  const NET=(function(){
+    const W=600,H=440, padX=70;
+    const cols=LAYERS.length;
+    const nodes=[];
+    for(let l=0;l<cols;l++){
+      const n=LAYERS[l], x=padX + l*((W-2*padX)/(cols-1));
+      const col=[];
+      for(let k=0;k<n;k++){
+        const span=Math.min(300, n*58);
+        const y=H/2 - span/2 + (n===1?0:(span/(n-1))*k) + span*0.0;
+        col.push({x,y});
+      }
+      nodes.push(col);
+    }
+    const edges=[];
+    for(let l=0;l<cols-1;l++){
+      nodes[l].forEach((p,i)=>nodes[l+1].forEach((q,j)=>edges.push({p,q,l,i,j})));
+    }
+    return {W,H,nodes,edges};
+  })();
+
+  function draw1(t, lt){
+    ctx1.clearRect(0,0,NET.W,NET.H);
+    const appear=clamp(lt/1.2,0,1);
+    // edges
+    NET.edges.forEach((e,idx)=>{
+      const reveal=clamp((appear*1.6) - (e.l*0.25),0,1);
+      if(reveal<=0) return;
+      ctx1.beginPath();
+      ctx1.moveTo(e.p.x,e.p.y);
+      ctx1.lineTo(lerp(e.p.x,e.q.x,reveal), lerp(e.p.y,e.q.y,reveal));
+      ctx1.strokeStyle='rgba(22,20,15,0.10)'; ctx1.lineWidth=0.9; ctx1.stroke();
+    });
+    // pulses
+    NET.edges.forEach((e,idx)=>{
+      if(idx%3) return;
+      const ph=((t*0.42)+(idx*0.071))%1;
+      const x=lerp(e.p.x,e.q.x,ph), y=lerp(e.p.y,e.q.y,ph);
+      const a=Math.sin(ph*Math.PI);
+      ctx1.beginPath(); ctx1.fillStyle='rgba(194,96,60,'+(0.55*a)+')';
+      ctx1.arc(x,y,2.1,0,TAU); ctx1.fill();
+    });
+    // nodes
+    NET.nodes.forEach((col,l)=>{
+      col.forEach((n,k)=>{
+        const act=0.5+0.5*Math.sin(t*2.0 - l*0.9 + k*0.5);
+        ctx1.beginPath();
+        ctx1.fillStyle=PAPER; ctx1.arc(n.x,n.y,7.5,0,TAU); ctx1.fill();
+        ctx1.beginPath();
+        ctx1.strokeStyle = act>0.82 ? CORAL : 'rgba(22,20,15,0.55)';
+        ctx1.lineWidth = act>0.82 ? 1.8 : 1.2;
+        ctx1.arc(n.x,n.y,7.5,0,TAU); ctx1.stroke();
+        if(act>0.82){
+          ctx1.beginPath(); ctx1.fillStyle='rgba(194,96,60,'+(0.22*(act-0.82)/0.18)+')';
+          ctx1.arc(n.x,n.y,14,0,TAU); ctx1.fill();
+        }
+      });
+    });
+    // layer labels
+    ctx1.font='10px "Cascadia Mono", Consolas, monospace';
+    ctx1.fillStyle='rgba(22,20,15,.38)'; ctx1.textAlign='center';
+    ['INPUT','H1','H2','OUT'].forEach((s,i)=>{
+      const x=NET.nodes[i][0].x;
+      ctx1.fillText(s, x, NET.H-8);
+    });
+    // theta bracket
+    ctx1.strokeStyle='rgba(194,96,60,.5)'; ctx1.lineWidth=1;
+    const bx=NET.W-30;
+    ctx1.beginPath(); ctx1.moveTo(bx, 30); ctx1.lineTo(bx, NET.H-30); ctx1.stroke();
+    ctx1.save();
+    ctx1.translate(bx+16, NET.H/2); ctx1.rotate(Math.PI/2);
+    ctx1.fillStyle=CORAL; ctx1.font='12px "Cascadia Mono", Consolas, monospace';
+    ctx1.fillText('θ  =  parameters', 0, 0);
+    ctx1.restore();
+  }
+
+  /* --- S2: loss landscape --- */
+  const DESC=(function(){
+    const W=500,H=440, cx=250, cy=232;
+    let x=-1.35, y=0.95;
+    const pts=[];
+    for(let i=0;i<240;i++){
+      const gx=1.5*x+0.35*y, gy=4.6*y+0.35*x;
+      pts.push({x,y});
+      x-=gx*0.055; y-=gy*0.055;
+    }
+    return {W,H,cx,cy,pts};
+  })();
+
+  function lossOf(x,y){ return 0.75*x*x + 2.3*y*y + 0.35*x*y; }
+
+  function draw2(t, lt){
+    ctx2.clearRect(0,0,DESC.W,DESC.H);
+    const {cx,cy}=DESC;
+    // contours
+    const ox=118, oy=70, rot=-0.36;
+    for(let i=0;i<8;i++){
+      const r=0.16+i*0.115;
+      ctx2.beginPath();
+      ctx2.ellipse(cx,cy, r*ox, r*oy, rot, 0, TAU);
+      ctx2.strokeStyle='rgba(22,20,15,'+(0.16-i*0.014)+')';
+      ctx2.lineWidth=1; ctx2.stroke();
+    }
+    // gradient field arrows (faint)
+    for(let gx=-3;gx<=3;gx++){
+      for(let gy=-2;gy<=2;gy++){
+        const px=cx+gx*34, py=cy+gy*30;
+        const d=Math.hypot(gx,gy);
+        if(d<0.6||d>3.4) continue;
+        ctx2.beginPath();
+        ctx2.moveTo(px,py);
+        ctx2.lineTo(px-gx*3.2, py-gy*2.6);
+        ctx2.strokeStyle='rgba(22,20,15,0.10)'; ctx2.lineWidth=0.8; ctx2.stroke();
+      }
+    }
+    // path
+    const prog=easeInOut(clamp((lt-2.0)/16,0,1));
+    const idx=Math.floor(prog*(DESC.pts.length-1));
+    ctx2.beginPath();
+    for(let i=0;i<=idx;i++){
+      const p=DESC.pts[i];
+      const px=cx+p.x*118, py=cy+p.y*70;
+      i?ctx2.lineTo(px,py):ctx2.moveTo(px,py);
+    }
+    ctx2.strokeStyle='rgba(194,96,60,.85)'; ctx2.lineWidth=1.6; ctx2.stroke();
+    // step dots
+    for(let i=0;i<=idx;i+=10){
+      const p=DESC.pts[i];
+      const px=cx+p.x*118, py=cy+p.y*70;
+      ctx2.beginPath(); ctx2.fillStyle='rgba(194,96,60,.35)'; ctx2.arc(px,py,1.8,0,TAU); ctx2.fill();
+    }
+    // ball
+    const p=DESC.pts[idx];
+    const bx=cx+p.x*118, by=cy+p.y*70;
+    const pulse=1+0.12*Math.sin(t*6);
+    ctx2.beginPath(); ctx2.fillStyle='rgba(194,96,60,.16)'; ctx2.arc(bx,by,16*pulse,0,TAU); ctx2.fill();
+    ctx2.beginPath(); ctx2.fillStyle=CORAL; ctx2.arc(bx,by,5.2,0,TAU); ctx2.fill();
+    // minimum mark
+    ctx2.beginPath(); ctx2.strokeStyle='rgba(22,20,15,.35)'; ctx2.lineWidth=1;
+    ctx2.arc(cx,cy,9,0,TAU); ctx2.stroke();
+    ctx2.font='10px "Cascadia Mono", Consolas, monospace';
+    ctx2.fillStyle='rgba(22,20,15,.4)'; ctx2.textAlign='center';
+    ctx2.fillText('min L', cx, cy+26);
+    // loss label
+    const lv=$('lossval');
+    if(lt>3){
+      lv.style.opacity=1;
+      const val = lossOf(p.x,p.y).toFixed(3);
+      lv.textContent='L = '+val;
+      lv.style.left=(690+46 + p.x*118+40)+'px';
+      lv.style.top =(150+236 + p.y*70-26)+'px';
+      lv.style.transition='none';
+    }
+  }
+
+  /* --- S5: agent loop --- */
+  function draw5(t, lt){
+    const W=560,H=470; ctx5.clearRect(0,0,W,H);
+    const cx=280, cy=222, R=138;
+    const appear=clamp(lt/1.4,0,1);
+    // ring
+    ctx5.beginPath(); ctx5.strokeStyle='rgba(22,20,15,.10)'; ctx5.lineWidth=1;
+    ctx5.arc(cx,cy,R,0,TAU*appear); ctx5.stroke();
+    ctx5.beginPath(); ctx5.strokeStyle='rgba(22,20,15,.06)'; ctx5.lineWidth=1;
+    ctx5.arc(cx,cy,R-26,0,TAU*appear); ctx5.stroke();
+    // rotating arc
+    const ang=t*0.9;
+    ctx5.beginPath(); ctx5.strokeStyle='rgba(194,96,60,.75)'; ctx5.lineWidth=2.4;
+    ctx5.arc(cx,cy,R,ang,ang+1.15); ctx5.stroke();
+    // nodes
+    const labels=['观察','思考','行动','环境'];
+    const angles=[-Math.PI/2, 0, Math.PI/2, Math.PI];
+    labels.forEach((s,i)=>{
+      const a=angles[i];
+      const x=cx+Math.cos(a)*R, y=cy+Math.sin(a)*R;
+      const lit = (Math.floor((t*2)%4)===i) ? 1 : 0;
+      ctx5.beginPath(); ctx5.fillStyle=PAPER; ctx5.arc(x,y,26,0,TAU); ctx5.fill();
+      ctx5.beginPath(); ctx5.strokeStyle= lit?'rgba(194,96,60,.95)':'rgba(22,20,15,.25)'; ctx5.lineWidth= lit?2:1;
+      ctx5.arc(x,y,26,0,TAU); ctx5.stroke();
+      if(lit){ ctx5.beginPath(); ctx5.fillStyle='rgba(194,96,60,.10)'; ctx5.arc(x,y,34,0,TAU); ctx5.fill(); }
+      ctx5.fillStyle= lit?CORAL:'rgba(22,20,15,.55)';
+      ctx5.font='15px "Microsoft YaHei", sans-serif'; ctx5.textAlign='center'; ctx5.textBaseline='middle';
+      ctx5.fillText(s,x,y);
+    });
+    // center tau
+    ctx5.textAlign='center'; ctx5.textBaseline='middle';
+    ctx5.fillStyle='rgba(22,20,15,.8)'; ctx5.font='34px "Noto Serif", Georgia, serif';
+    ctx5.fillText('τ', cx, cy-4);
+    ctx5.fillStyle='rgba(22,20,15,.35)'; ctx5.font='10px "Cascadia Mono", Consolas, monospace';
+    ctx5.fillText('TRAJECTORY', cx, cy+30);
+    // arrows between nodes
+    for(let i=0;i<4;i++){
+      const a1=angles[i], a2=angles[(i+1)%4];
+      const r=R;
+      const s1={x:cx+Math.cos(a1)*r,y:cy+Math.sin(a1)*r};
+      const s2={x:cx+Math.cos(a2)*r,y:cy+Math.sin(a2)*r};
+      ctx5.beginPath(); ctx5.strokeStyle='rgba(22,20,15,.18)'; ctx5.lineWidth=1;
+      ctx5.moveTo(s1.x,s1.y); ctx5.lineTo(s2.x,s2.y); ctx5.stroke();
+    }
+    // steps counter
+    const step=1+Math.floor(t*1.1)%17;
+    ctx5.textAlign='left';
+    ctx5.fillStyle='rgba(22,20,15,.30)'; ctx5.font='10px "Cascadia Mono", Consolas, monospace';
+    ctx5.fillText('STEP '+String(step).padStart(2,'0'), 12, H-16);
+  }
+
+  /* --- S7: credit assignment --- */
+  function draw7(t, lt){
+    const W=640,H=420; ctx7.clearRect(0,0,W,H);
+    const n=7, y0=170;
+    const xs=[]; for(let i=0;i<n;i++) xs.push(60+i*82);
+    // step boxes
+    for(let i=0;i<n;i++){
+      const show=clamp((lt-0.6-i*0.12)/0.5,0,1);
+      if(show<=0) continue;
+      const x=xs[i];
+      ctx7.beginPath(); ctx7.fillStyle=PAPER;
+      ctx7.rect(x-22, y0-22, 44, 44); ctx7.fill();
+      ctx7.strokeStyle='rgba(22,20,15,'+(0.5*show)+')'; ctx7.lineWidth=1; ctx7.stroke();
+      ctx7.fillStyle='rgba(22,20,15,'+(0.55*show)+')';
+      ctx7.font='11px "Cascadia Mono", Consolas, monospace'; ctx7.textAlign='center'; ctx7.textBaseline='middle';
+      ctx7.fillText('a'+i, x, y0);
+      // arrow
+      if(i<n-1){
+        ctx7.beginPath(); ctx7.moveTo(x+24,y0); ctx7.lineTo(x+56,y0);
+        ctx7.strokeStyle='rgba(22,20,15,'+(0.30*show)+')'; ctx7.lineWidth=1; ctx7.stroke();
+        ctx7.beginPath(); ctx7.moveTo(x+56,y0); ctx7.lineTo(x+50,y0-3.5); ctx7.lineTo(x+50,y0+3.5);
+        ctx7.closePath(); ctx7.fillStyle='rgba(22,20,15,'+(0.30*show)+')'; ctx7.fill();
+      }
+    }
+    // reward
+    const rShow=clamp((lt-2.2)/0.6,0,1);
+    if(rShow>0){
+      const rx=xs[n-1]+62;
+      ctx7.beginPath(); ctx7.strokeStyle='rgba(22,20,15,'+(0.3*rShow)+')';
+      ctx7.moveTo(xs[n-1]+24,y0); ctx7.lineTo(rx-6,y0); ctx7.stroke();
+      ctx7.beginPath(); ctx7.arc(rx+16,y0,20,0,TAU);
+      ctx7.fillStyle='rgba(194,96,60,'+(0.12*rShow)+')'; ctx7.fill();
+      ctx7.strokeStyle='rgba(194,96,60,'+(0.9*rShow)+')'; ctx7.lineWidth=1.4; ctx7.stroke();
+      ctx7.fillStyle='rgba(194,96,60,'+rShow+')';
+      ctx7.font='13px "Cascadia Mono", Consolas, monospace'; ctx7.textAlign='center';
+      ctx7.fillText('R', rx+16, y0+1);
+      ctx7.fillStyle='rgba(22,20,15,'+(0.35*rShow)+')'; ctx7.font='10px "Cascadia Mono", Consolas, monospace';
+      ctx7.fillText('success / fail', rx+16, y0+38);
+    }
+    // advantage arrows back
+    const adv=[0.30,0.95,0.55,1.0,0.42,0.72,0.20];
+    const aShow=clamp((lt-3.2)/1.2,0,1);
+    if(aShow>0){
+      for(let i=0;i<n;i++){
+        const w=adv[i];
+        const yb=y0+26+w*46;
+        const x=xs[i];
+        ctx7.beginPath();
+        ctx7.moveTo(x, y0+24);
+        ctx7.lineTo(x, lerp(y0+24, yb, aShow));
+        ctx7.strokeStyle='rgba(194,96,60,'+(0.18+0.42*w)+')'; ctx7.lineWidth=1+3.2*w; ctx7.stroke();
+        if(aShow>0.7){
+          ctx7.beginPath(); ctx7.arc(x, yb, 2.6, 0, TAU);
+          ctx7.fillStyle='rgba(194,96,60,.75)'; ctx7.fill();
+        }
+      }
+      // baseline line
+      ctx7.beginPath();
+      ctx7.moveTo(40, y0+26+0.5*46); ctx7.lineTo(W-40, y0+26+0.5*46);
+      ctx7.setLineDash([4,5]);
+      ctx7.strokeStyle='rgba(22,20,15,.22)'; ctx7.lineWidth=1; ctx7.stroke(); ctx7.setLineDash([]);
+      ctx7.fillStyle='rgba(22,20,15,.4)'; ctx7.font='10px "Cascadia Mono", Consolas, monospace';
+      ctx7.textAlign='left'; ctx7.fillText('baseline', 40, y0+26+0.5*46-8);
+      ctx7.textAlign='right'; ctx7.fillStyle='rgba(22,20,15,.4)';
+      ctx7.fillText('A  (advantage per step)', W-40, y0+26+0.5*46-8);
+    }
+  }
+
+  /* ================= timeline events ================= */
+  const beats=[];
+  const at=(time,fn)=>beats.push({time,fn,done:false});
+
+  // S2 loop chips
+  const chipIds=['lc1','lc2','lc3','lc4'];
+  // (built dynamically inside s2? keep simple: highlight via timer below)
+
+  // S3 token probability
+  at(56+2.4,()=>{});
+  const tokenData=[[0.62,0.21,0.09],[0.71,0.15,0.07],[0.80,0.11,0.05]];
+  let tokStage=-1;
+  // S4 scores
+  at(82+3.2,()=>{ animateTo('scA',0.31); });
+  at(82+3.5,()=>{ animateTo('scB',0.78); });
+  at(82+1.0,()=>{ flash('c1'); });
+  at(82+2.6,()=>{ flash('c2'); });
+  at(82+4.2,()=>{ flash('c3'); });
+
+  function flash(id){
+    const el=$(id); if(!el) return;
+    el.classList.add('on');
+    setTimeout(()=>{ el.classList.remove('on'); }, 1600);
+  }
+  function animateTo(id,target){
+    const el=$(id); if(!el) return;
+    let v=0; const t0=performance.now(), dur=900;
+    (function step(){
+      const p=clamp((performance.now()-t0)/dur,0,1);
+      el.textContent=(target*easeOut(p)).toFixed(2);
+      if(p<1) requestAnimationFrame(step);
+    })();
+  }
+
+  /* ================= main loop ================= */
+  const SEEK=parseFloat(new URLSearchParams(location.search).get('t')||'0')||0;
+  const start=performance.now()-SEEK*1000;
+  function loop(){
+    const t=(performance.now()-start)/1000;
+    const T=Math.min(t, DURATION);
+
+    // scenes
+    let cur=SCENES[0];
+    sceneEls.forEach(({s,el})=>{
+      const F=0.55;
+      let o=0;
+      if(T>=s.a && T<=s.b){
+        o=Math.min(1,(T-s.a)/F,(s.b-T)/F);
+        if(T>s.a+0.4 && T<s.b-0.4) cur=s;
+      }
+      el.style.opacity=clamp(o,0,1).toFixed(3);
+    });
+
+    // reveals
+    anims.forEach(a=>{
+      const p=clamp((T-a.at)/a.dur,0,1);
+      const e=easeOut(p);
+      if(p<=0){ a.node.style.opacity=0; }
+      else{
+        a.node.style.opacity=e.toFixed(3);
+        a.node.style.transform='translateY('+((1-e)*a.dy).toFixed(2)+'px)';
+      }
+    });
+
+    // chrome
+    chapNo.textContent=cur.chap;
+    chapTitle.textContent=cur.name;
+    pageNo.textContent=cur.page;
+    prog.style.width=(T/DURATION*100).toFixed(2)+'%';
+
+    // canvases
+    if(T<9.4) draw0(T);
+    if(T>=8.6&&T<32.6) draw1(T, T-9.0);
+    if(T>=31.6&&T<56.6) draw2(T, T-32.0);
+    if(T>=105.6&&T<132.6) draw5(T, T-106.0);
+    if(T>=157.6&&T<172.6) draw7(T, T-158.0);
+
+    // S2 chips cycle
+    if(T>=32 && T<56){
+      const lt=T-32;
+      const phase=Math.floor((lt-1.0)/1.3)%4;
+      ['lc1','lc2','lc3','lc4'].forEach((id,i)=>{
+        const el=$(id); if(!el) return;
+        const on = (lt>1.0 && i===phase);
+        el.style.borderColor = on?'var(--coral)':'var(--line)';
+        el.style.color = on?'var(--coral)':'var(--ink-2)';
+        el.style.background = on?'rgba(194,96,60,.07)':'rgba(255,255,255,.32)';
+        el.style.boxShadow = on?'0 0 0 3px rgba(194,96,60,.06)':'none';
+      });
+    }
+
+    // S3 probability bars
+    if(T>=56 && T<82){
+      const lt=T-56;
+      const stage=clamp(Math.floor((lt-2.2)/2.0),0,2);
+      if(stage>=0 && stage!==tokStage){
+        tokStage=stage;
+        const d=tokenData[stage];
+        const vals=[d[0],d[1],d[2]];
+        ['b1','b2','b3'].forEach((id,i)=>{
+          const el=$(id); el.style.transition='width .8s cubic-bezier(.2,.7,.3,1)';
+          setTimeout(()=>{ el.style.width=(vals[i]*100)+'%'; }, 60+i*90);
+        });
+        ['v1','v2','v3'].forEach((id,i)=>{ setTimeout(()=>{ $(id).textContent=vals[i].toFixed(2); }, 400+i*90); });
+      }
+      const words=['轨迹','经验','数据'];
+      const hot=$('hotTok');
+      if(hot) hot.textContent=words[tokStage>=0?tokStage:0];
+    }
+
+    // beats
+    beats.forEach(b=>{ if(!b.done && T>=b.time){ b.done=true; b.fn(); } });
+
+    if(t<=DURATION+0.4) requestAnimationFrame(loop);
+  }
+
+  document.body.addEventListener('click',()=>{ /* noop, keep page alive */ });
+  document.getElementById('progress').style.width='0%';
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
