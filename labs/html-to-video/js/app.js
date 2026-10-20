@@ -261,8 +261,10 @@ async function getFFmpeg() {
   if (state.ffmpeg) return state.ffmpeg;
   setStatus('加载 ffmpeg.wasm（首次较慢）…');
   const { createFFmpeg } = FFmpeg;
+  // 本地 vendor 化，避免 CDN 被 ORB/跨域策略拦截
+  const corePath = new URL('vendor/ffmpeg/core.js', document.baseURI).href;
   const ffmpeg = createFFmpeg({
-    corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/umd/ffmpeg-core.js',
+    corePath,
     log: false,
   });
   await ffmpeg.load();

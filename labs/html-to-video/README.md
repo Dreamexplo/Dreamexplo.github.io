@@ -38,7 +38,7 @@ python -m http.server 8800    # 或任意静态服务器
 # 打开 http://localhost:8800/
 ```
 
-注意：Service Worker 需要 `https` 或 `localhost` 环境；CDN 资源需联网。
+注意：Service Worker 需要 `https` 或 `localhost` 环境。第三方库已本地 vendor 化（`vendor/`），运行时不需要外网 CDN。
 
 ## 文件结构
 
@@ -46,9 +46,16 @@ python -m http.server 8800    # 或任意静态服务器
 index.html            面板 UI
 css/style.css         样式
 js/app.js             主逻辑（文件解析/录制/转码/下载）
-js/zipfs-sw.js        Service Worker 虚拟文件系统
+zipfs-sw.js           Service Worker 虚拟文件系统
 examples/anim.html    演示用 rAF canvas 动画页（30s）
+vendor/               html2canvas / fflate / ffmpeg.wasm（本地自持，免 CDN）
 ```
+
+## 输出编码
+
+- 优先请求原生 `video/mp4;codecs=avc1`（H.264），浏览器支持时直出，几乎零等待
+- 浏览器只给 VP9-in-MP4 或 WebM 时，选 MP4 会走 ffmpeg.wasm 转 H.264（`yuv420p`，兼容 QuickTime/剪映等）
+- 转码失败且已有可播放 MP4，会以原始编码兜底并提示
 
 ## 限制
 
